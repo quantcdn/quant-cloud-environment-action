@@ -1,0 +1,28 @@
+name: 'Quant Cloud Create Environment'
+description: 'Creates a new environment in Quant Cloud'
+inputs:
+  api_key:
+    description: 'Quant API key'
+    required: true
+  organization:
+    description: 'Quant organisation ID'
+    required: true
+  environment_name:
+    description: 'Name for the environment'
+    required: true
+  base_url:
+    description: 'Quant Cloud API URL'
+    required: false
+    default: 'https://dashboard.quantcdn.io/api/v3'
+  from_environment:
+    description: 'Name of the environment to clone configuration from'
+    required: false
+  compose_spec:
+    description: 'Compose specification for the environment'
+    required: false
+outputs:
+  environment_name:
+    description: 'The name of the created environment'
+runs:
+  using: 'node20'
+  main: 'dist/index.js' 
