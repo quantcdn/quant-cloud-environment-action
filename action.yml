@@ -1,5 +1,8 @@
 name: 'Quant Cloud Environment'
 description: 'Creates or updates an environment in Quant Cloud'
+branding:
+  icon: 'cloud'
+  color: 'blue'
 inputs:
   api_key:
     description: 'Quant API key'
