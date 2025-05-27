@@ -2,6 +2,7 @@ import * as core from '@actions/core';
 import {
     Environment,
     CreateEnvironmentRequest,
+    UpdateEnvironmentComposeRequest,
     EnvironmentsApi
 } from 'quant-ts-client';
 
@@ -12,6 +13,13 @@ const apiOpts = (apiKey: string) => {
                 requestOptions.headers["Authorization"] = `Bearer ${apiKey}`;
             }
         }
+    }
+}
+
+interface ApiError {
+    response?: object;
+    body?: {
+        message?: string;
     }
 }
 
@@ -26,36 +34,75 @@ async function run(): Promise<void> {
     const appName = core.getInput('app_name', { required: true });
     const organisation = core.getInput('organization', { required: true });
     const environmentName = core.getInput('environment_name', { required: true });
+    
     const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io/api/v3';
+    
     const fromEnvironment = core.getInput('from_environment', { required: false });
     const composeSpec = core.getInput('compose_spec', { required: false });
 
     const client = new EnvironmentsApi(baseUrl);
     client.setDefaultAuthentication(apiOpts(apiKey));
 
-    const createEnvironmentRequest: CreateEnvironmentRequest = {
-        envName: environmentName,
-        composeDefinition: {}
+    let state = 'update';
+    let environment: Environment;
+
+    if (!composeSpec && !fromEnvironment) {
+        throw new Error('Either compose_spec or from_environment must be provided');
     }
 
-    if (composeSpec) {
-        createEnvironmentRequest.composeDefinition = JSON.parse(composeSpec);
+    try {
+        environment = (await client.getEnvironment(organisation, appName, environmentName)).body;
+    } catch (error) {
+        console.log(typeof error);
+        console.log(error)
+
+        const apiError = error as Error & ApiError;
+        if (apiError.body?.message?.includes('not found') && apiError.body?.message?.includes('404')) {
+            state = 'create';
+        } else {
+            throw error;
+        }
     }
 
-    if (fromEnvironment) {
-        createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
-    }
+    return
 
-    const environment = await client.createEnvironment(organisation, appName, createEnvironmentRequest);
+    if (state === 'create') {
+        const createEnvironmentRequest: CreateEnvironmentRequest = {
+            envName: environmentName,
+            composeDefinition: {}
+        }
 
-    core.setOutput('environment_name', environment.body.envName);
-  } catch (error) {
+        if (composeSpec) {
+            createEnvironmentRequest.composeDefinition = JSON.parse(composeSpec);
+        }
+
+        if (fromEnvironment) {
+            createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
+        }
+        
+        const res = await client.createEnvironment(organisation, appName, createEnvironmentRequest);
+        environment = res.body as Environment;
+        core.info(`Successfully created environment: ${environment.envName}`);
+    
+    } else {
+        const updateEnvironmentRequest: UpdateEnvironmentComposeRequest = {
+            composeDefinition: JSON.parse(composeSpec)
+        }
+        await client.updateEnvironmentCompose(organisation, appName, environmentName, updateEnvironmentRequest);
+        core.info(`Successfully updated environment: ${environmentName}`);
+    }  
+    
+    core.setOutput('environment_name', environmentName);
+  
+} catch (error) {
     if (error instanceof Error) {
         core.setFailed(error.message);
     } else {
         core.setFailed('An unknown error occurred');
     }
   }
+
+  return;
 }
 
 run(); 

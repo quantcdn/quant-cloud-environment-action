@@ -1,0 +1,29 @@
+name: Test Create Environment
+
+on:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create the environment
+        uses: ./
+        id: create-environment
+        with:
+          api_key: ${{ secrets.QUANT_API_KEY }}
+          environment_name: 'test-env'
+          app_name: 'test-app'
+          organization: 'quant'
+          base_url: 'https://portal.stage.quantcdn.io/api/v3'
+
+      - name: Debug Outputs
+        run: |
+          echo "Environment Name: ${{ steps.create-environment.outputs.environment_name }}"

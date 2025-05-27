@@ -1,0 +1,12 @@
+echo "🔨 Running build..."
+npm run build
+
+echo "📦 Staging dist..."
+git add dist/
+
+# Optional: Only commit if dist has changes
+if ! git diff --cached --quiet; then
+  echo "✅ Changes detected in dist/, committing..."
+else
+  echo "ℹ️ No changes in dist/, skipping commit."
+fi
