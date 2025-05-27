@@ -23,6 +23,7 @@ jobs:
           app_name: 'test-app'
           organization: 'quant'
           base_url: 'https://portal.stage.quantcdn.io/api/v3'
+          compose_spec: '{"services": {"test-app": {"image": "nginx:latest"}}}'
 
       - name: Debug Outputs
         run: |

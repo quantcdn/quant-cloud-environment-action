@@ -63508,19 +63508,18 @@ async function run() {
         }
         try {
             environment = (await client.getEnvironment(organisation, appName, environmentName)).body;
+            core.info(`Environment ${environmentName} exists, will update`);
         }
         catch (error) {
-            console.log(typeof error);
-            console.log(error);
             const apiError = error;
-            if (apiError.body?.message?.includes('not found') && apiError.body?.message?.includes('404')) {
+            if (apiError.statusCode === 404) {
                 state = 'create';
+                core.info(`Environment ${environmentName} does not exist, will create`);
             }
             else {
                 throw error;
             }
         }
-        return;
         if (state === 'create') {
             const createEnvironmentRequest = {
                 envName: environmentName,
@@ -63537,6 +63536,9 @@ async function run() {
             core.info(`Successfully created environment: ${environment.envName}`);
         }
         else {
+            if (!composeSpec) {
+                throw new Error('compose_spec is required for updating an environment');
+            }
             const updateEnvironmentRequest = {
                 composeDefinition: JSON.parse(composeSpec)
             };
@@ -63546,12 +63548,8 @@ async function run() {
         core.setOutput('environment_name', environmentName);
     }
     catch (error) {
-        if (error instanceof Error) {
-            core.setFailed(error.message);
-        }
-        else {
-            core.setFailed('An unknown error occurred');
-        }
+        const apiError = error;
+        core.setFailed(apiError.body?.message || 'Unknown error');
     }
     return;
 }
