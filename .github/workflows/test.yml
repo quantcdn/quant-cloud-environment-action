@@ -19,12 +19,11 @@ jobs:
         id: create-environment
         with:
           api_key: ${{ secrets.QUANT_API_KEY }}
-          environment_name: 'test-env'
-          app_name: 'test-app'
+          environment_name: 'production'
+          app_name: 'clap'
           organization: 'quant'
           base_url: 'https://portal.stage.quantcdn.io/api/v3'
-          compose_spec: '{"services": {"test-app": {"image": "nginx:latest"}}}'
-
+          compose_spec: '{"containers":[{"name":"nginx-container-1","imageReference":{"type":"external","identifier":"nginx:stable-perl"},"essential":true,"portMappings":[{"containerPort":80,"protocol":"tcp"}]},{"name":"mailhog-container-2","imageReference":{"type":"external","identifier":"mailhog/mailhog:latest"},"essential":true,"portMappings":[{"containerPort":8025,"protocol":"tcp"}]}]}'
       - name: Debug Outputs
         run: |
           echo "Environment Name: ${{ steps.create-environment.outputs.environment_name }}"

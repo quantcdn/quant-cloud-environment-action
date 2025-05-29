@@ -20730,11 +20730,11 @@ class EnvironmentsApi {
      * @param organisation The organisation ID
      * @param application The application ID
      * @param environment The environment ID
-     * @param updateEnvironmentComposeRequest
+     * @param updateEnvironmentRequest
      */
-    updateEnvironmentCompose(organisation, application, environment, updateEnvironmentComposeRequest, options = { headers: {} }) {
+    updateEnvironment(organisation, application, environment, updateEnvironmentRequest, options = { headers: {} }) {
         return __awaiter(this, void 0, void 0, function* () {
-            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/compose'
+            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}'
                 .replace('{' + 'organisation' + '}', encodeURIComponent(String(organisation)))
                 .replace('{' + 'application' + '}', encodeURIComponent(String(application)))
                 .replace('{' + 'environment' + '}', encodeURIComponent(String(environment)));
@@ -20743,19 +20743,19 @@ class EnvironmentsApi {
             let localVarFormParams = {};
             // verify required parameter 'organisation' is not null or undefined
             if (organisation === null || organisation === undefined) {
-                throw new Error('Required parameter organisation was null or undefined when calling updateEnvironmentCompose.');
+                throw new Error('Required parameter organisation was null or undefined when calling updateEnvironment.');
             }
             // verify required parameter 'application' is not null or undefined
             if (application === null || application === undefined) {
-                throw new Error('Required parameter application was null or undefined when calling updateEnvironmentCompose.');
+                throw new Error('Required parameter application was null or undefined when calling updateEnvironment.');
             }
             // verify required parameter 'environment' is not null or undefined
             if (environment === null || environment === undefined) {
-                throw new Error('Required parameter environment was null or undefined when calling updateEnvironmentCompose.');
+                throw new Error('Required parameter environment was null or undefined when calling updateEnvironment.');
             }
-            // verify required parameter 'updateEnvironmentComposeRequest' is not null or undefined
-            if (updateEnvironmentComposeRequest === null || updateEnvironmentComposeRequest === undefined) {
-                throw new Error('Required parameter updateEnvironmentComposeRequest was null or undefined when calling updateEnvironmentCompose.');
+            // verify required parameter 'updateEnvironmentRequest' is not null or undefined
+            if (updateEnvironmentRequest === null || updateEnvironmentRequest === undefined) {
+                throw new Error('Required parameter updateEnvironmentRequest was null or undefined when calling updateEnvironment.');
             }
             Object.assign(localVarHeaderParams, options.headers);
             let localVarUseFormData = false;
@@ -20766,7 +20766,7 @@ class EnvironmentsApi {
                 uri: localVarPath,
                 useQuerystring: this._useQuerystring,
                 json: true,
-                body: models_1.ObjectSerializer.serialize(updateEnvironmentComposeRequest, "UpdateEnvironmentComposeRequest")
+                body: models_1.ObjectSerializer.serialize(updateEnvironmentRequest, "UpdateEnvironmentRequest")
             };
             let authenticationPromise = Promise.resolve();
             authenticationPromise = authenticationPromise.then(() => this.authentications.default.applyToRequest(localVarRequestOptions));
@@ -22343,6 +22343,16 @@ ContainerImageReference.attributeTypeMap = [
         "name": "tag",
         "baseName": "tag",
         "type": "string"
+    },
+    {
+        "name": "type",
+        "baseName": "type",
+        "type": "string"
+    },
+    {
+        "name": "identifier",
+        "baseName": "identifier",
+        "type": "string"
     }
 ];
 
@@ -22930,7 +22940,7 @@ __exportStar(__nccwpck_require__(3921), exports);
 __exportStar(__nccwpck_require__(136), exports);
 __exportStar(__nccwpck_require__(8719), exports);
 __exportStar(__nccwpck_require__(2967), exports);
-__exportStar(__nccwpck_require__(6583), exports);
+__exportStar(__nccwpck_require__(5817), exports);
 __exportStar(__nccwpck_require__(5812), exports);
 __exportStar(__nccwpck_require__(8617), exports);
 __exportStar(__nccwpck_require__(1957), exports);
@@ -22954,7 +22964,7 @@ const environment_1 = __nccwpck_require__(3921);
 const getEcrLoginCredentials200Response_1 = __nccwpck_require__(136);
 const scalingPolicy_1 = __nccwpck_require__(8719);
 const updateCronJobRequest_1 = __nccwpck_require__(2967);
-const updateEnvironmentComposeRequest_1 = __nccwpck_require__(6583);
+const updateEnvironmentRequest_1 = __nccwpck_require__(5817);
 const updateEnvironmentStateRequest_1 = __nccwpck_require__(5812);
 const updateEnvironmentVariableRequest_1 = __nccwpck_require__(8617);
 const validateCompose200Response_1 = __nccwpck_require__(1957);
@@ -22994,7 +23004,7 @@ let typeMap = {
     "GetEcrLoginCredentials200Response": getEcrLoginCredentials200Response_1.GetEcrLoginCredentials200Response,
     "ScalingPolicy": scalingPolicy_1.ScalingPolicy,
     "UpdateCronJobRequest": updateCronJobRequest_1.UpdateCronJobRequest,
-    "UpdateEnvironmentComposeRequest": updateEnvironmentComposeRequest_1.UpdateEnvironmentComposeRequest,
+    "UpdateEnvironmentRequest": updateEnvironmentRequest_1.UpdateEnvironmentRequest,
     "UpdateEnvironmentStateRequest": updateEnvironmentStateRequest_1.UpdateEnvironmentStateRequest,
     "UpdateEnvironmentVariableRequest": updateEnvironmentVariableRequest_1.UpdateEnvironmentVariableRequest,
     "ValidateCompose200Response": validateCompose200Response_1.ValidateCompose200Response,
@@ -23346,7 +23356,7 @@ UpdateCronJobRequest.attributeTypeMap = [
 
 /***/ }),
 
-/***/ 6583:
+/***/ 5817:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -23363,15 +23373,15 @@ UpdateCronJobRequest.attributeTypeMap = [
  * Do not edit the class manually.
  */
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.UpdateEnvironmentComposeRequest = void 0;
-class UpdateEnvironmentComposeRequest {
+exports.UpdateEnvironmentRequest = void 0;
+class UpdateEnvironmentRequest {
     static getAttributeTypeMap() {
-        return UpdateEnvironmentComposeRequest.attributeTypeMap;
+        return UpdateEnvironmentRequest.attributeTypeMap;
     }
 }
-exports.UpdateEnvironmentComposeRequest = UpdateEnvironmentComposeRequest;
-UpdateEnvironmentComposeRequest.discriminator = undefined;
-UpdateEnvironmentComposeRequest.attributeTypeMap = [
+exports.UpdateEnvironmentRequest = UpdateEnvironmentRequest;
+UpdateEnvironmentRequest.discriminator = undefined;
+UpdateEnvironmentRequest.attributeTypeMap = [
     {
         "name": "composeDefinition",
         "baseName": "composeDefinition",
@@ -63503,6 +63513,7 @@ async function run() {
         client.setDefaultAuthentication(apiOpts(apiKey));
         let state = 'update';
         let environment;
+        core.info('Quant Cloud Environment Action');
         if (!composeSpec && !fromEnvironment) {
             throw new Error('Either compose_spec or from_environment must be provided');
         }
@@ -63539,17 +63550,37 @@ async function run() {
             if (!composeSpec) {
                 throw new Error('compose_spec is required for updating an environment');
             }
+            const composeDefinition = JSON.parse(composeSpec);
+            // Ensure imageReference is properly structured with optional fields
+            if (composeDefinition.containers) {
+                composeDefinition.containers = composeDefinition.containers.map((container) => {
+                    if (!container.imageReference) {
+                        throw new Error(`Container ${container.name} is missing imageReference`);
+                    }
+                    return container;
+                });
+            }
             const updateEnvironmentRequest = {
-                composeDefinition: JSON.parse(composeSpec)
+                composeDefinition
             };
-            await client.updateEnvironmentCompose(organisation, appName, environmentName, updateEnvironmentRequest);
-            core.info(`Successfully updated environment: ${environmentName}`);
+            try {
+                const response = await client.updateEnvironment(organisation, appName, environmentName, updateEnvironmentRequest);
+                core.info(`Successfully updated environment: ${environmentName}`);
+            }
+            catch (error) {
+                const apiError = error;
+                if (apiError.response?.body) {
+                    core.error(`API Error: ${JSON.stringify(apiError.response.body)}`);
+                }
+                throw error;
+            }
         }
         core.setOutput('environment_name', environmentName);
     }
     catch (error) {
         const apiError = error;
         core.setFailed(apiError.body?.message || 'Unknown error');
+        console.log(error);
     }
     return;
 }

@@ -2,7 +2,7 @@ import * as core from '@actions/core';
 import {
     Environment,
     CreateEnvironmentRequest,
-    UpdateEnvironmentComposeRequest,
+    UpdateEnvironmentRequest,
     EnvironmentsApi
 } from 'quant-ts-client';
 
@@ -46,6 +46,8 @@ async function run(): Promise<void> {
         let state = 'update';
         let environment: Environment;
 
+        core.info('Quant Cloud Environment Action');
+
         if (!composeSpec && !fromEnvironment) {
             throw new Error('Either compose_spec or from_environment must be provided');
         }
@@ -85,11 +87,31 @@ async function run(): Promise<void> {
             if (!composeSpec) {
                 throw new Error('compose_spec is required for updating an environment');
             }
-            const updateEnvironmentRequest: UpdateEnvironmentComposeRequest = {
-                composeDefinition: JSON.parse(composeSpec)
+            const composeDefinition = JSON.parse(composeSpec);
+            
+            // Ensure imageReference is properly structured with optional fields
+            if (composeDefinition.containers) {
+                composeDefinition.containers = composeDefinition.containers.map((container: any) => {
+                    if (!container.imageReference) {
+                        throw new Error(`Container ${container.name} is missing imageReference`);
+                    }
+                    return container;
+                });
             }
-            await client.updateEnvironmentCompose(organisation, appName, environmentName, updateEnvironmentRequest);
-            core.info(`Successfully updated environment: ${environmentName}`);
+
+            const updateEnvironmentRequest = {
+                composeDefinition
+            }
+            try {
+                const response = await client.updateEnvironment(organisation, appName, environmentName, updateEnvironmentRequest);
+                core.info(`Successfully updated environment: ${environmentName}`);
+            } catch (error) {
+                const apiError = error as Error & { response?: { body?: any } };
+                if (apiError.response?.body) {
+                    core.error(`API Error: ${JSON.stringify(apiError.response.body)}`);
+                }
+                throw error;
+            }
         }
 
         core.setOutput('environment_name', environmentName);
@@ -97,6 +119,7 @@ async function run(): Promise<void> {
     } catch (error) {
         const apiError = error as Error & ApiError;
         core.setFailed(apiError.body?.message || 'Unknown error');
+        console.log(error);
     }
 
     return;
