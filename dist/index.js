@@ -63523,7 +63523,7 @@ async function run() {
         }
         catch (error) {
             const apiError = error;
-            if (apiError.statusCode === 404) {
+            if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
                 state = 'create';
                 core.info(`Environment ${environmentName} does not exist, will create`);
             }
