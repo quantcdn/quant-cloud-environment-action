@@ -20978,7 +20978,7 @@ class ScalingPolicyApi {
      */
     deleteScalingPolicy(organisation, application, environment, policyName, options = { headers: {} }) {
         return __awaiter(this, void 0, void 0, function* () {
-            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/scaling-policy/{policyName}'
+            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/scaling-policies/{policyName}'
                 .replace('{' + 'organisation' + '}', encodeURIComponent(String(organisation)))
                 .replace('{' + 'application' + '}', encodeURIComponent(String(application)))
                 .replace('{' + 'environment' + '}', encodeURIComponent(String(environment)))
@@ -21047,14 +21047,14 @@ class ScalingPolicyApi {
     }
     /**
      *
-     * @summary Get the scaling policy for an environment
+     * @summary Get the scaling policies for an environment
      * @param organisation The organisation ID
      * @param application The application ID
      * @param environment The environment ID
      */
-    getScalingPolicy(organisation, application, environment, options = { headers: {} }) {
+    getScalingPolicies(organisation, application, environment, options = { headers: {} }) {
         return __awaiter(this, void 0, void 0, function* () {
-            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/scaling-policy'
+            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/scaling-policies'
                 .replace('{' + 'organisation' + '}', encodeURIComponent(String(organisation)))
                 .replace('{' + 'application' + '}', encodeURIComponent(String(application)))
                 .replace('{' + 'environment' + '}', encodeURIComponent(String(environment)));
@@ -21063,15 +21063,15 @@ class ScalingPolicyApi {
             let localVarFormParams = {};
             // verify required parameter 'organisation' is not null or undefined
             if (organisation === null || organisation === undefined) {
-                throw new Error('Required parameter organisation was null or undefined when calling getScalingPolicy.');
+                throw new Error('Required parameter organisation was null or undefined when calling getScalingPolicies.');
             }
             // verify required parameter 'application' is not null or undefined
             if (application === null || application === undefined) {
-                throw new Error('Required parameter application was null or undefined when calling getScalingPolicy.');
+                throw new Error('Required parameter application was null or undefined when calling getScalingPolicies.');
             }
             // verify required parameter 'environment' is not null or undefined
             if (environment === null || environment === undefined) {
-                throw new Error('Required parameter environment was null or undefined when calling getScalingPolicy.');
+                throw new Error('Required parameter environment was null or undefined when calling getScalingPolicies.');
             }
             Object.assign(localVarHeaderParams, options.headers);
             let localVarUseFormData = false;
@@ -21126,7 +21126,7 @@ class ScalingPolicyApi {
      */
     updateScalingPolicy(organisation, application, environment, scalingPolicy, options = { headers: {} }) {
         return __awaiter(this, void 0, void 0, function* () {
-            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/scaling-policy'
+            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/scaling-policies'
                 .replace('{' + 'organisation' + '}', encodeURIComponent(String(organisation)))
                 .replace('{' + 'application' + '}', encodeURIComponent(String(application)))
                 .replace('{' + 'environment' + '}', encodeURIComponent(String(environment)));
@@ -22985,6 +22985,7 @@ let primitives = [
 let enumsMap = {
     "CronRun.RunTypeEnum": cronRun_1.CronRun.RunTypeEnum,
     "CronRun.StatusEnum": cronRun_1.CronRun.StatusEnum,
+    "ScalingPolicy.MetricEnum": scalingPolicy_1.ScalingPolicy.MetricEnum,
 };
 let typeMap = {
     "Application": application_1.Application,
@@ -23278,7 +23279,7 @@ ScalingPolicy.attributeTypeMap = [
     {
         "name": "metric",
         "baseName": "metric",
-        "type": "string"
+        "type": "ScalingPolicy.MetricEnum"
     },
     {
         "name": "targetValue",
@@ -23296,6 +23297,14 @@ ScalingPolicy.attributeTypeMap = [
         "type": "number"
     }
 ];
+(function (ScalingPolicy) {
+    let MetricEnum;
+    (function (MetricEnum) {
+        MetricEnum[MetricEnum["CpuUtilization"] = 'CPUUtilization'] = "CpuUtilization";
+        MetricEnum[MetricEnum["MemoryUtilization"] = 'MemoryUtilization'] = "MemoryUtilization";
+        MetricEnum[MetricEnum["Rps"] = 'RPS'] = "Rps";
+    })(MetricEnum = ScalingPolicy.MetricEnum || (ScalingPolicy.MetricEnum = {}));
+})(ScalingPolicy = exports.ScalingPolicy || (exports.ScalingPolicy = {}));
 
 
 /***/ }),
