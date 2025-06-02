@@ -60,7 +60,8 @@ async function run(): Promise<void> {
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
-
+        const minCapacity = core.getInput('min_capacity', { required: false }) ?? 1;
+        const maxCapacity = core.getInput('max_capacity', { required: false }) ?? 1;
         const client = new EnvironmentsApi(baseUrl);
         client.setDefaultAuthentication(apiOpts(apiKey));
 
@@ -89,6 +90,8 @@ async function run(): Promise<void> {
         if (state === 'create') {
             const createEnvironmentRequest: CreateEnvironmentRequest = {
                 envName: environmentName,
+                minCapacity: parseInt(minCapacity),
+                maxCapacity: parseInt(maxCapacity),
                 composeDefinition: {}
             }
 
@@ -121,7 +124,9 @@ async function run(): Promise<void> {
             }
 
             const updateEnvironmentRequest = {
-                composeDefinition
+                composeDefinition,
+                minCapacity: parseInt(minCapacity),
+                maxCapacity: parseInt(maxCapacity),
             }
             try {
                 const response = await client.updateEnvironment(organisation, appName, environmentName, removeNullValues(updateEnvironmentRequest));
