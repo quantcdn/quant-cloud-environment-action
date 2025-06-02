@@ -63504,6 +63504,25 @@ const apiOpts = (apiKey) => {
         }
     };
 };
+function removeNullValues(obj) {
+    if (obj === null || obj === undefined) {
+        return undefined;
+    }
+    if (Array.isArray(obj)) {
+        return obj.map(removeNullValues).filter(x => x !== undefined);
+    }
+    if (typeof obj === 'object') {
+        const result = {};
+        for (const [key, value] of Object.entries(obj)) {
+            const cleaned = removeNullValues(value);
+            if (cleaned !== undefined) {
+                result[key] = cleaned;
+            }
+        }
+        return Object.keys(result).length ? result : undefined;
+    }
+    return obj;
+}
 /**
  * This action creates a new environment in Quant Cloud.
  *
@@ -63546,12 +63565,12 @@ async function run() {
                 composeDefinition: {}
             };
             if (composeSpec) {
-                createEnvironmentRequest.composeDefinition = JSON.parse(composeSpec);
+                createEnvironmentRequest.composeDefinition = removeNullValues(JSON.parse(composeSpec)) || {};
             }
             if (fromEnvironment) {
                 createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
             }
-            const res = await client.createEnvironment(organisation, appName, createEnvironmentRequest);
+            const res = await client.createEnvironment(organisation, appName, removeNullValues(createEnvironmentRequest));
             environment = res.body;
             core.info(`Successfully created environment: ${environment.envName}`);
         }
@@ -63559,7 +63578,7 @@ async function run() {
             if (!composeSpec) {
                 throw new Error('compose_spec is required for updating an environment');
             }
-            const composeDefinition = JSON.parse(composeSpec);
+            const composeDefinition = removeNullValues(JSON.parse(composeSpec)) || {};
             // Ensure imageReference is properly structured with optional fields
             if (composeDefinition.containers) {
                 composeDefinition.containers = composeDefinition.containers.map((container) => {
@@ -63573,7 +63592,7 @@ async function run() {
                 composeDefinition
             };
             try {
-                const response = await client.updateEnvironment(organisation, appName, environmentName, updateEnvironmentRequest);
+                const response = await client.updateEnvironment(organisation, appName, environmentName, removeNullValues(updateEnvironmentRequest));
                 core.info(`Successfully updated environment: ${environmentName}`);
             }
             catch (error) {

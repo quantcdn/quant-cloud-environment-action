@@ -3,7 +3,8 @@ import {
     Environment,
     CreateEnvironmentRequest,
     UpdateEnvironmentRequest,
-    EnvironmentsApi
+    EnvironmentsApi,
+    Compose
 } from 'quant-ts-client';
 
 const apiOpts = (apiKey: string) => {
@@ -14,6 +15,26 @@ const apiOpts = (apiKey: string) => {
             }
         }
     }
+}
+
+function removeNullValues(obj: any): any {
+    if (obj === null || obj === undefined) {
+        return undefined;
+    }
+    if (Array.isArray(obj)) {
+        return obj.map(removeNullValues).filter(x => x !== undefined);
+    }
+    if (typeof obj === 'object') {
+        const result: any = {};
+        for (const [key, value] of Object.entries(obj)) {
+            const cleaned = removeNullValues(value);
+            if (cleaned !== undefined) {
+                result[key] = cleaned;
+            }
+        }
+        return Object.keys(result).length ? result : undefined;
+    }
+    return obj;
 }
 
 interface ApiError {
@@ -72,14 +93,14 @@ async function run(): Promise<void> {
             }
 
             if (composeSpec) {
-                createEnvironmentRequest.composeDefinition = JSON.parse(composeSpec);
+                createEnvironmentRequest.composeDefinition = removeNullValues(JSON.parse(composeSpec)) || {};
             }
 
             if (fromEnvironment) {
                 createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
             }
 
-            const res = await client.createEnvironment(organisation, appName, createEnvironmentRequest);
+            const res = await client.createEnvironment(organisation, appName, removeNullValues(createEnvironmentRequest));
             environment = res.body as Environment;
             core.info(`Successfully created environment: ${environment.envName}`);
 
@@ -87,7 +108,7 @@ async function run(): Promise<void> {
             if (!composeSpec) {
                 throw new Error('compose_spec is required for updating an environment');
             }
-            const composeDefinition = JSON.parse(composeSpec);
+            const composeDefinition = removeNullValues(JSON.parse(composeSpec)) || {};
             
             // Ensure imageReference is properly structured with optional fields
             if (composeDefinition.containers) {
@@ -103,7 +124,7 @@ async function run(): Promise<void> {
                 composeDefinition
             }
             try {
-                const response = await client.updateEnvironment(organisation, appName, environmentName, updateEnvironmentRequest);
+                const response = await client.updateEnvironment(organisation, appName, environmentName, removeNullValues(updateEnvironmentRequest));
                 core.info(`Successfully updated environment: ${environmentName}`);
             } catch (error) {
                 const apiError = error as Error & { response?: { body?: any } };
