@@ -63537,10 +63537,16 @@ async function run() {
         const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io/api/v3';
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
-        const minCapacity = core.getInput('min_capacity', { required: false }) ?? 1;
-        const maxCapacity = core.getInput('max_capacity', { required: false }) ?? 1;
+        let minCapacity = core.getInput('min_capacity', { required: false });
+        let maxCapacity = core.getInput('max_capacity', { required: false });
         const client = new quant_ts_client_1.EnvironmentsApi(baseUrl);
         client.setDefaultAuthentication(apiOpts(apiKey));
+        if (!minCapacity) {
+            minCapacity = '1';
+        }
+        if (!maxCapacity) {
+            maxCapacity = '1';
+        }
         let state = 'update';
         let environment;
         core.info('Quant Cloud Environment Action');

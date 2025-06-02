@@ -60,10 +60,17 @@ async function run(): Promise<void> {
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
-        const minCapacity = core.getInput('min_capacity', { required: false }) ?? 1;
-        const maxCapacity = core.getInput('max_capacity', { required: false }) ?? 1;
+        let minCapacity = core.getInput('min_capacity', { required: false });
+        let maxCapacity = core.getInput('max_capacity', { required: false });
         const client = new EnvironmentsApi(baseUrl);
         client.setDefaultAuthentication(apiOpts(apiKey));
+
+        if (!minCapacity) {
+            minCapacity = '1';
+        }
+        if (!maxCapacity) {
+            maxCapacity = '1';
+        }
 
         let state = 'update';
         let environment: Environment;
@@ -102,7 +109,7 @@ async function run(): Promise<void> {
             if (fromEnvironment) {
                 createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
             }
-
+            
             const res = await client.createEnvironment(organisation, appName, removeNullValues(createEnvironmentRequest));
             environment = res.body as Environment;
             core.info(`Successfully created environment: ${environment.envName}`);
