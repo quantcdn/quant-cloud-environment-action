@@ -139,9 +139,9 @@ async function run(): Promise<void> {
                 const response = await client.updateEnvironment(organisation, appName, environmentName, removeNullValues(updateEnvironmentRequest));
                 core.info(`Successfully updated environment: ${environmentName}`);
             } catch (error) {
-                const apiError = error as Error & { response?: { body?: any } };
-                if (apiError.response?.body) {
-                    core.error(`API Error: ${JSON.stringify(apiError.response.body)}`);
+                const apiError = error as Error & ApiError;
+                if (apiError.body) {
+                    core.error(`API Error: ${JSON.stringify(apiError.body)}`);
                 }
                 throw error;
             }
@@ -151,8 +151,7 @@ async function run(): Promise<void> {
 
     } catch (error) {
         const apiError = error as Error & ApiError;
-        core.setFailed(apiError.body?.message || 'Unknown error');
-        console.log(error);
+        core.setFailed(apiError.body?.message != null ? apiError.body?.message : 'Unknown error');
     }
 
     return;

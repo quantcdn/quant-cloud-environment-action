@@ -63609,8 +63609,8 @@ async function run() {
             }
             catch (error) {
                 const apiError = error;
-                if (apiError.response?.body) {
-                    core.error(`API Error: ${JSON.stringify(apiError.response.body)}`);
+                if (apiError.body) {
+                    core.error(`API Error: ${JSON.stringify(apiError.body)}`);
                 }
                 throw error;
             }
@@ -63619,8 +63619,7 @@ async function run() {
     }
     catch (error) {
         const apiError = error;
-        core.setFailed(apiError.body?.message || 'Unknown error');
-        console.log(error);
+        core.setFailed(apiError.body?.message != null ? apiError.body?.message : 'Unknown error');
     }
     return;
 }
