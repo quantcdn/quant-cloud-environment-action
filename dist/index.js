@@ -63571,14 +63571,19 @@ async function run() {
             const createEnvironmentRequest = {
                 envName: environmentName,
                 minCapacity: parseInt(minCapacity),
-                maxCapacity: parseInt(maxCapacity),
-                composeDefinition: {}
+                maxCapacity: parseInt(maxCapacity)
             };
+            // Only add composeDefinition if composeSpec was provided
             if (composeSpec) {
                 createEnvironmentRequest.composeDefinition = removeNullValues(JSON.parse(composeSpec)) || {};
             }
+            // Add cloning configuration if specified
             if (fromEnvironment) {
                 createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
+            }
+            // If neither composeSpec nor fromEnvironment provided, we need an empty compose definition
+            if (!composeSpec && !fromEnvironment) {
+                createEnvironmentRequest.composeDefinition = {};
             }
             const res = await client.createEnvironment(organisation, appName, removeNullValues(createEnvironmentRequest));
             environment = res.body;
