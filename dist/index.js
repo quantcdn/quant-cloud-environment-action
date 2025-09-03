@@ -20726,6 +20726,184 @@ class EnvironmentsApi {
     }
     /**
      *
+     * @summary List the sync operations for an environment
+     * @param organisation The organisation ID
+     * @param application The application ID
+     * @param environment The environment ID
+     * @param type The sync type
+     */
+    listSyncOperations(organisation, application, environment, type, options = { headers: {} }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/sync/{type}'
+                .replace('{' + 'organisation' + '}', encodeURIComponent(String(organisation)))
+                .replace('{' + 'application' + '}', encodeURIComponent(String(application)))
+                .replace('{' + 'environment' + '}', encodeURIComponent(String(environment)))
+                .replace('{' + 'type' + '}', encodeURIComponent(String(type)));
+            let localVarQueryParameters = {};
+            let localVarHeaderParams = Object.assign({}, this._defaultHeaders);
+            const produces = ['application/json'];
+            // give precedence to 'application/json'
+            if (produces.indexOf('application/json') >= 0) {
+                localVarHeaderParams.Accept = 'application/json';
+            }
+            else {
+                localVarHeaderParams.Accept = produces.join(',');
+            }
+            let localVarFormParams = {};
+            // verify required parameter 'organisation' is not null or undefined
+            if (organisation === null || organisation === undefined) {
+                throw new Error('Required parameter organisation was null or undefined when calling listSyncOperations.');
+            }
+            // verify required parameter 'application' is not null or undefined
+            if (application === null || application === undefined) {
+                throw new Error('Required parameter application was null or undefined when calling listSyncOperations.');
+            }
+            // verify required parameter 'environment' is not null or undefined
+            if (environment === null || environment === undefined) {
+                throw new Error('Required parameter environment was null or undefined when calling listSyncOperations.');
+            }
+            // verify required parameter 'type' is not null or undefined
+            if (type === null || type === undefined) {
+                throw new Error('Required parameter type was null or undefined when calling listSyncOperations.');
+            }
+            Object.assign(localVarHeaderParams, options.headers);
+            let localVarUseFormData = false;
+            let localVarRequestOptions = {
+                method: 'GET',
+                qs: localVarQueryParameters,
+                headers: localVarHeaderParams,
+                uri: localVarPath,
+                useQuerystring: this._useQuerystring,
+                json: true,
+            };
+            let authenticationPromise = Promise.resolve();
+            authenticationPromise = authenticationPromise.then(() => this.authentications.default.applyToRequest(localVarRequestOptions));
+            let interceptorPromise = authenticationPromise;
+            for (const interceptor of this.interceptors) {
+                interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
+            }
+            return interceptorPromise.then(() => {
+                if (Object.keys(localVarFormParams).length) {
+                    if (localVarUseFormData) {
+                        localVarRequestOptions.formData = localVarFormParams;
+                    }
+                    else {
+                        localVarRequestOptions.form = localVarFormParams;
+                    }
+                }
+                return new Promise((resolve, reject) => {
+                    (0, request_1.default)(localVarRequestOptions, (error, response, body) => {
+                        if (error) {
+                            reject(error);
+                        }
+                        else {
+                            if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
+                                body = models_1.ObjectSerializer.deserialize(body, "Array<SyncOperation>");
+                                resolve({ response: response, body: body });
+                            }
+                            else {
+                                reject(new apis_1.HttpError(response, body, response.statusCode));
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    }
+    /**
+     *
+     * @summary Perform a sync operation from a source environment to the current environment
+     * @param organisation The organisation ID
+     * @param application The application ID
+     * @param environment The environment ID
+     * @param type The sync type
+     * @param syncToEnvironmentRequest
+     */
+    syncToEnvironment(organisation, application, environment, type, syncToEnvironmentRequest, options = { headers: {} }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const localVarPath = this.basePath + '/organisations/{organisation}/applications/{application}/environments/{environment}/sync/{type}'
+                .replace('{' + 'organisation' + '}', encodeURIComponent(String(organisation)))
+                .replace('{' + 'application' + '}', encodeURIComponent(String(application)))
+                .replace('{' + 'environment' + '}', encodeURIComponent(String(environment)))
+                .replace('{' + 'type' + '}', encodeURIComponent(String(type)));
+            let localVarQueryParameters = {};
+            let localVarHeaderParams = Object.assign({}, this._defaultHeaders);
+            const produces = ['application/json'];
+            // give precedence to 'application/json'
+            if (produces.indexOf('application/json') >= 0) {
+                localVarHeaderParams.Accept = 'application/json';
+            }
+            else {
+                localVarHeaderParams.Accept = produces.join(',');
+            }
+            let localVarFormParams = {};
+            // verify required parameter 'organisation' is not null or undefined
+            if (organisation === null || organisation === undefined) {
+                throw new Error('Required parameter organisation was null or undefined when calling syncToEnvironment.');
+            }
+            // verify required parameter 'application' is not null or undefined
+            if (application === null || application === undefined) {
+                throw new Error('Required parameter application was null or undefined when calling syncToEnvironment.');
+            }
+            // verify required parameter 'environment' is not null or undefined
+            if (environment === null || environment === undefined) {
+                throw new Error('Required parameter environment was null or undefined when calling syncToEnvironment.');
+            }
+            // verify required parameter 'type' is not null or undefined
+            if (type === null || type === undefined) {
+                throw new Error('Required parameter type was null or undefined when calling syncToEnvironment.');
+            }
+            // verify required parameter 'syncToEnvironmentRequest' is not null or undefined
+            if (syncToEnvironmentRequest === null || syncToEnvironmentRequest === undefined) {
+                throw new Error('Required parameter syncToEnvironmentRequest was null or undefined when calling syncToEnvironment.');
+            }
+            Object.assign(localVarHeaderParams, options.headers);
+            let localVarUseFormData = false;
+            let localVarRequestOptions = {
+                method: 'POST',
+                qs: localVarQueryParameters,
+                headers: localVarHeaderParams,
+                uri: localVarPath,
+                useQuerystring: this._useQuerystring,
+                json: true,
+                body: models_1.ObjectSerializer.serialize(syncToEnvironmentRequest, "SyncToEnvironmentRequest")
+            };
+            let authenticationPromise = Promise.resolve();
+            authenticationPromise = authenticationPromise.then(() => this.authentications.default.applyToRequest(localVarRequestOptions));
+            let interceptorPromise = authenticationPromise;
+            for (const interceptor of this.interceptors) {
+                interceptorPromise = interceptorPromise.then(() => interceptor(localVarRequestOptions));
+            }
+            return interceptorPromise.then(() => {
+                if (Object.keys(localVarFormParams).length) {
+                    if (localVarUseFormData) {
+                        localVarRequestOptions.formData = localVarFormParams;
+                    }
+                    else {
+                        localVarRequestOptions.form = localVarFormParams;
+                    }
+                }
+                return new Promise((resolve, reject) => {
+                    (0, request_1.default)(localVarRequestOptions, (error, response, body) => {
+                        if (error) {
+                            reject(error);
+                        }
+                        else {
+                            if (response.statusCode && response.statusCode >= 200 && response.statusCode <= 299) {
+                                body = models_1.ObjectSerializer.deserialize(body, "SyncOperation");
+                                resolve({ response: response, body: body });
+                            }
+                            else {
+                                reject(new apis_1.HttpError(response, body, response.statusCode));
+                            }
+                        }
+                    });
+                });
+            });
+        });
+    }
+    /**
+     *
      * @summary Update the compose for an environment
      * @param organisation The organisation ID
      * @param application The application ID
@@ -22596,6 +22774,11 @@ CreateEnvironmentRequest.attributeTypeMap = [
         "name": "composeDefinition",
         "baseName": "composeDefinition",
         "type": "Compose"
+    },
+    {
+        "name": "imageSuffix",
+        "baseName": "imageSuffix",
+        "type": "string"
     }
 ];
 
@@ -22807,6 +22990,11 @@ Environment.attributeTypeMap = [
         "type": "string"
     },
     {
+        "name": "imageSuffix",
+        "baseName": "imageSuffix",
+        "type": "string"
+    },
+    {
         "name": "taskDefinition",
         "baseName": "taskDefinition",
         "type": "object"
@@ -22939,6 +23127,8 @@ __exportStar(__nccwpck_require__(6037), exports);
 __exportStar(__nccwpck_require__(3921), exports);
 __exportStar(__nccwpck_require__(136), exports);
 __exportStar(__nccwpck_require__(8719), exports);
+__exportStar(__nccwpck_require__(3251), exports);
+__exportStar(__nccwpck_require__(7926), exports);
 __exportStar(__nccwpck_require__(2967), exports);
 __exportStar(__nccwpck_require__(5817), exports);
 __exportStar(__nccwpck_require__(5812), exports);
@@ -22963,6 +23153,8 @@ const cronRun_1 = __nccwpck_require__(6037);
 const environment_1 = __nccwpck_require__(3921);
 const getEcrLoginCredentials200Response_1 = __nccwpck_require__(136);
 const scalingPolicy_1 = __nccwpck_require__(8719);
+const syncOperation_1 = __nccwpck_require__(3251);
+const syncToEnvironmentRequest_1 = __nccwpck_require__(7926);
 const updateCronJobRequest_1 = __nccwpck_require__(2967);
 const updateEnvironmentRequest_1 = __nccwpck_require__(5817);
 const updateEnvironmentStateRequest_1 = __nccwpck_require__(5812);
@@ -23004,6 +23196,8 @@ let typeMap = {
     "Environment": environment_1.Environment,
     "GetEcrLoginCredentials200Response": getEcrLoginCredentials200Response_1.GetEcrLoginCredentials200Response,
     "ScalingPolicy": scalingPolicy_1.ScalingPolicy,
+    "SyncOperation": syncOperation_1.SyncOperation,
+    "SyncToEnvironmentRequest": syncToEnvironmentRequest_1.SyncToEnvironmentRequest,
     "UpdateCronJobRequest": updateCronJobRequest_1.UpdateCronJobRequest,
     "UpdateEnvironmentRequest": updateEnvironmentRequest_1.UpdateEnvironmentRequest,
     "UpdateEnvironmentStateRequest": updateEnvironmentStateRequest_1.UpdateEnvironmentStateRequest,
@@ -23305,6 +23499,108 @@ ScalingPolicy.attributeTypeMap = [
         MetricEnum[MetricEnum["Rps"] = 'RPS'] = "Rps";
     })(MetricEnum = ScalingPolicy.MetricEnum || (ScalingPolicy.MetricEnum = {}));
 })(ScalingPolicy = exports.ScalingPolicy || (exports.ScalingPolicy = {}));
+
+
+/***/ }),
+
+/***/ 3251:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * QuantCloud API
+ * QuantCloud API
+ *
+ * The version of the OpenAPI document: 1.0.0
+ *
+ *
+ * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
+ * https://openapi-generator.tech
+ * Do not edit the class manually.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SyncOperation = void 0;
+class SyncOperation {
+    static getAttributeTypeMap() {
+        return SyncOperation.attributeTypeMap;
+    }
+}
+exports.SyncOperation = SyncOperation;
+SyncOperation.discriminator = undefined;
+SyncOperation.attributeTypeMap = [
+    {
+        "name": "syncId",
+        "baseName": "syncId",
+        "type": "string"
+    },
+    {
+        "name": "syncType",
+        "baseName": "syncType",
+        "type": "string"
+    },
+    {
+        "name": "sourceEnvironment",
+        "baseName": "sourceEnvironment",
+        "type": "string"
+    },
+    {
+        "name": "targetEnvironment",
+        "baseName": "targetEnvironment",
+        "type": "string"
+    },
+    {
+        "name": "status",
+        "baseName": "status",
+        "type": "string"
+    },
+    {
+        "name": "createdAt",
+        "baseName": "createdAt",
+        "type": "string"
+    },
+    {
+        "name": "completedAt",
+        "baseName": "completedAt",
+        "type": "string"
+    }
+];
+
+
+/***/ }),
+
+/***/ 7926:
+/***/ ((__unused_webpack_module, exports) => {
+
+"use strict";
+
+/**
+ * QuantCloud API
+ * QuantCloud API
+ *
+ * The version of the OpenAPI document: 1.0.0
+ *
+ *
+ * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
+ * https://openapi-generator.tech
+ * Do not edit the class manually.
+ */
+Object.defineProperty(exports, "__esModule", ({ value: true }));
+exports.SyncToEnvironmentRequest = void 0;
+class SyncToEnvironmentRequest {
+    static getAttributeTypeMap() {
+        return SyncToEnvironmentRequest.attributeTypeMap;
+    }
+}
+exports.SyncToEnvironmentRequest = SyncToEnvironmentRequest;
+SyncToEnvironmentRequest.discriminator = undefined;
+SyncToEnvironmentRequest.attributeTypeMap = [
+    {
+        "name": "sourceEnvironment",
+        "baseName": "sourceEnvironment",
+        "type": "string"
+    }
+];
 
 
 /***/ }),
