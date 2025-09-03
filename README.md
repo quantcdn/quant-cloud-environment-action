@@ -17,6 +17,19 @@ This GitHub Action creates or updates an environment in Quant Cloud.
     base_url: https://dashboard.quantcdn.io/api/v3  # Optional
 ```
 
+### Clone with Image Suffix (Feature Branches)
+
+```yaml
+- uses: quantcdn/quant-cloud-environment-action@v1
+  with:
+    api_key: ${{ secrets.QUANT_API_KEY }}
+    organization: your-org-id
+    app_name: my-app
+    environment_name: feature-xyz
+    from_environment: production  # Base configuration to clone from
+    image_suffix: feature-xyz  # Transforms "cli-latest" → "cli-feature-xyz"
+```
+
 ### Clone with Container Overrides
 
 ```yaml
@@ -88,6 +101,11 @@ This GitHub Action creates or updates an environment in Quant Cloud.
   * **Optional** - only used when creating a new environment
   * When provided, the new environment inherits all configuration from this source environment
   * `compose_spec` becomes optional and only used for selective container overrides
+* `image_suffix`: Suffix to automatically transform container image names
+  * **Optional** - transforms image references during creation/updates
+  * Example: `"feature-xyz"` transforms `"cli-latest"` → `"cli-feature-xyz"`
+  * Works with both cloning (`from_environment`) and explicit compose specifications
+  * Perfect for feature branch deployments with custom image tags
 * `base_url`: Quant Cloud API URL (optional, defaults to https://dashboard.quantcdn.io/api/v3)
 
 ## Outputs

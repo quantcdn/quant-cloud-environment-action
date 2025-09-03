@@ -63537,6 +63537,7 @@ async function run() {
         const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io/api/v3';
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
+        const imageSuffix = core.getInput('image_suffix', { required: false });
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
         const client = new quant_ts_client_1.EnvironmentsApi(baseUrl);
@@ -63581,6 +63582,10 @@ async function run() {
             if (fromEnvironment) {
                 createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
             }
+            // Add image suffix if provided - API handles the transformation
+            if (imageSuffix) {
+                createEnvironmentRequest.imageSuffix = imageSuffix;
+            }
             // If neither composeSpec nor fromEnvironment provided, we need an empty compose definition
             if (!composeSpec && !fromEnvironment) {
                 createEnvironmentRequest.composeDefinition = {};
@@ -63608,6 +63613,10 @@ async function run() {
                 minCapacity: parseInt(minCapacity),
                 maxCapacity: parseInt(maxCapacity),
             };
+            // Add image suffix if provided - API handles the transformation
+            if (imageSuffix) {
+                updateEnvironmentRequest.imageSuffix = imageSuffix;
+            }
             try {
                 const response = await client.updateEnvironment(organisation, appName, environmentName, removeNullValues(updateEnvironmentRequest));
                 core.info(`Successfully updated environment: ${environmentName}`);

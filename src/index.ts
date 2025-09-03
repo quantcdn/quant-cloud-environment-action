@@ -60,6 +60,7 @@ async function run(): Promise<void> {
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
+        const imageSuffix = core.getInput('image_suffix', { required: false });
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
         const client = new EnvironmentsApi(baseUrl);
@@ -111,6 +112,11 @@ async function run(): Promise<void> {
                 createEnvironmentRequest.cloneConfigurationFrom = fromEnvironment;
             }
 
+            // Add image suffix if provided - API handles the transformation
+            if (imageSuffix) {
+                (createEnvironmentRequest as any).imageSuffix = imageSuffix;
+            }
+
             // If neither composeSpec nor fromEnvironment provided, we need an empty compose definition
             if (!composeSpec && !fromEnvironment) {
                 createEnvironmentRequest.composeDefinition = {};
@@ -136,10 +142,15 @@ async function run(): Promise<void> {
                 });
             }
 
-            const updateEnvironmentRequest = {
+            const updateEnvironmentRequest: any = {
                 composeDefinition,
                 minCapacity: parseInt(minCapacity),
                 maxCapacity: parseInt(maxCapacity),
+            }
+
+            // Add image suffix if provided - API handles the transformation
+            if (imageSuffix) {
+                updateEnvironmentRequest.imageSuffix = imageSuffix;
             }
             try {
                 const response = await client.updateEnvironment(organisation, appName, environmentName, removeNullValues(updateEnvironmentRequest));
