@@ -63834,6 +63834,7 @@ async function run() {
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
         const imageSuffix = core.getInput('image_suffix', { required: false });
+        const operation = core.getInput('operation', { required: false }) || 'create';
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
         const client = new quant_ts_client_1.EnvironmentsApi(baseUrl);
@@ -63847,16 +63848,40 @@ async function run() {
         let state = 'update';
         let environment;
         core.info('Quant Cloud Environment Action');
-        if (!composeSpec && !fromEnvironment) {
-            throw new Error('Either compose_spec or from_environment must be provided');
+        if (operation !== 'delete' && !composeSpec && !fromEnvironment) {
+            throw new Error('Either compose_spec or from_environment must be provided (not required for delete operation)');
+        }
+        // Handle delete operation
+        if (operation === 'delete') {
+            try {
+                await client.deleteEnvironment(organisation, appName, environmentName);
+                core.info(`Successfully deleted environment: ${environmentName}`);
+                core.setOutput('environment_name', environmentName);
+                return;
+            }
+            catch (error) {
+                const apiError = error;
+                if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+                    core.info(`Environment ${environmentName} does not exist, nothing to delete`);
+                    core.setOutput('environment_name', environmentName);
+                    return;
+                }
+                else {
+                    throw error;
+                }
+            }
         }
         try {
             environment = (await client.getEnvironment(organisation, appName, environmentName)).body;
-            core.info(`Environment ${environmentName} exists, will update`);
+            state = 'update';
+            core.info(`Environment ${environmentName} exists, will ${operation === 'create' ? 'update' : operation}`);
         }
         catch (error) {
             const apiError = error;
             if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+                if (operation === 'update') {
+                    throw new Error(`Cannot update environment ${environmentName} - it does not exist`);
+                }
                 state = 'create';
                 core.info(`Environment ${environmentName} does not exist, will create`);
             }

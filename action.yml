@@ -29,6 +29,10 @@ inputs:
   image_suffix:
     description: 'Suffix to append to container image names (e.g. "feature-xyz" transforms "cli-latest" to "cli-feature-xyz")'
     required: false
+  operation:
+    description: 'Operation to perform: create, update, or delete'
+    required: false
+    default: 'create'
 outputs:
   environment_name:
     description: 'The name of the created or updated environment'

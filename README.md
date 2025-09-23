@@ -30,6 +30,34 @@ This GitHub Action creates or updates an environment in Quant Cloud.
     image_suffix: feature-xyz  # Transforms "cli-latest" → "cli-feature-xyz"
 ```
 
+### Delete Environment
+
+```yaml
+- uses: quantcdn/quant-cloud-environment-action@v1
+  with:
+    api_key: ${{ secrets.QUANT_API_KEY }}
+    organization: your-org-id
+    app_name: my-app
+    environment_name: feature-xyz
+    operation: delete  # Deletes the specified environment
+```
+
+### Force Update Existing Environment
+
+```yaml
+- uses: quantcdn/quant-cloud-environment-action@v1
+  with:
+    api_key: ${{ secrets.QUANT_API_KEY }}
+    organization: your-org-id
+    app_name: my-app
+    environment_name: my-environment
+    operation: update  # Fails if environment doesn't exist
+    compose_spec: |
+      {
+        "containers": [...]
+      }
+```
+
 ### Clone with Container Overrides
 
 ```yaml
@@ -106,6 +134,12 @@ This GitHub Action creates or updates an environment in Quant Cloud.
   * Example: `"feature-xyz"` transforms `"cli-latest"` → `"cli-feature-xyz"`
   * Works with both cloning (`from_environment`) and explicit compose specifications
   * Perfect for feature branch deployments with custom image tags
+* `operation`: Operation to perform
+  * **Optional** - defaults to `create`
+  * Valid values: `create`, `update`, `delete`
+  * `create`: Creates new environment or updates if it exists
+  * `update`: Updates existing environment (fails if doesn't exist)
+  * `delete`: Deletes environment (succeeds silently if doesn't exist)
 * `base_url`: Quant Cloud API URL (optional, defaults to https://dashboard.quantcdn.io/api/v3)
 
 ## Outputs
