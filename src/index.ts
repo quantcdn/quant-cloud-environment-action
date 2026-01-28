@@ -4,18 +4,9 @@ import {
     CreateEnvironmentRequest,
     UpdateEnvironmentRequest,
     EnvironmentsApi,
-    Compose
+    Compose,
+    Configuration
 } from 'quant-ts-client';
-
-const apiOpts = (apiKey: string) => {
-    return {
-        applyToRequest: (requestOptions: any) => {
-            if (requestOptions && requestOptions.headers) {
-                requestOptions.headers["Authorization"] = `Bearer ${apiKey}`;
-            }
-        }
-    }
-}
 
 function removeNullValues(obj: any): any {
     if (obj === null || obj === undefined) {
@@ -64,8 +55,11 @@ async function run(): Promise<void> {
         const operation = core.getInput('operation', { required: false }) || 'create';
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
-        const client = new EnvironmentsApi(baseUrl);
-        client.setDefaultAuthentication(apiOpts(apiKey));
+        const config = new Configuration({
+            basePath: baseUrl,
+            accessToken: apiKey
+        });
+        const client = new EnvironmentsApi(config);
 
         if (!minCapacity) {
             minCapacity = '1';
@@ -103,7 +97,7 @@ async function run(): Promise<void> {
         }
 
         try {
-            environment = (await client.getEnvironment(organisation, appName, environmentName)).body;
+            environment = (await client.getEnvironment(organisation, appName, environmentName)).data;
             state = 'update';
             core.info(`Environment ${environmentName} exists, will ${operation === 'create' ? 'update' : operation}`);
         } catch (error) {
@@ -147,7 +141,7 @@ async function run(): Promise<void> {
             }
             
             const res = await client.createEnvironment(organisation, appName, removeNullValues(createEnvironmentRequest));
-            environment = res.body as Environment;
+            environment = res.data as Environment;
             core.info(`Successfully created environment: ${environment.envName}`);
 
         } else {
