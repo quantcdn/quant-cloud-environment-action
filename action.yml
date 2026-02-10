@@ -19,7 +19,7 @@ inputs:
   base_url:
     description: 'Quant Cloud API URL'
     required: false
-    default: 'https://dashboard.quantcdn.io/api/v3'
+    default: 'https://dashboard.quantcdn.io'
   from_environment:
     description: 'Name of the environment to clone configuration from (only used when creating a new environment)'
     required: false

@@ -44382,7 +44382,7 @@ async function run() {
         const appName = core.getInput('app_name', { required: true });
         const organisation = core.getInput('organization', { required: true });
         const environmentName = core.getInput('environment_name', { required: true });
-        const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io/api/v3';
+        const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io';
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
         const imageSuffix = core.getInput('image_suffix', { required: false });
@@ -44416,7 +44416,8 @@ async function run() {
             }
             catch (error) {
                 const apiError = error;
-                if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+                const status = apiError.response?.status || apiError.status;
+                if (status === 404 || apiError.response?.data?.message?.includes('not found')) {
                     core.info(`Environment ${environmentName} does not exist, nothing to delete`);
                     core.setOutput('environment_name', environmentName);
                     return;
@@ -44433,7 +44434,8 @@ async function run() {
         }
         catch (error) {
             const apiError = error;
-            if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+            const status = apiError.response?.status || apiError.status;
+            if (status === 404 || apiError.response?.data?.message?.includes('not found')) {
                 if (operation === 'update') {
                     throw new Error(`Cannot update environment ${environmentName} - it does not exist`);
                 }
@@ -44499,8 +44501,8 @@ async function run() {
             }
             catch (error) {
                 const apiError = error;
-                if (apiError.body) {
-                    core.error(`API Error: ${JSON.stringify(apiError.body)}`);
+                if (apiError.response?.data) {
+                    core.error(`API Error: ${JSON.stringify(apiError.response.data)}`);
                 }
                 throw error;
             }
@@ -44509,7 +44511,8 @@ async function run() {
     }
     catch (error) {
         const apiError = error;
-        core.setFailed(apiError.body?.message != null ? apiError.body?.message : 'Unknown error');
+        const message = apiError.response?.data?.message || apiError.message || 'Unknown error';
+        core.setFailed(message);
     }
     return;
 }

@@ -29,9 +29,12 @@ function removeNullValues(obj: any): any {
 }
 
 interface ApiError {
-    statusCode?: number;
-    body?: {
-        message?: string;
+    status?: number;
+    response?: {
+        status?: number;
+        data?: {
+            message?: string;
+        }
     }
 }
 
@@ -47,7 +50,7 @@ async function run(): Promise<void> {
         const organisation = core.getInput('organization', { required: true });
         const environmentName = core.getInput('environment_name', { required: true });
 
-        const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io/api/v3';
+        const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io';
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
@@ -86,7 +89,8 @@ async function run(): Promise<void> {
                 return;
             } catch (error) {
                 const apiError = error as Error & ApiError;
-                if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+                const status = apiError.response?.status || apiError.status;
+                if (status === 404 || apiError.response?.data?.message?.includes('not found')) {
                     core.info(`Environment ${environmentName} does not exist, nothing to delete`);
                     core.setOutput('environment_name', environmentName);
                     return;
@@ -102,7 +106,8 @@ async function run(): Promise<void> {
             core.info(`Environment ${environmentName} exists, will ${operation === 'create' ? 'update' : operation}`);
         } catch (error) {
             const apiError = error as Error & ApiError;
-            if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+            const status = apiError.response?.status || apiError.status;
+            if (status === 404 || apiError.response?.data?.message?.includes('not found')) {
                 if (operation === 'update') {
                     throw new Error(`Cannot update environment ${environmentName} - it does not exist`);
                 }
@@ -175,8 +180,8 @@ async function run(): Promise<void> {
                 core.info(`Successfully updated environment: ${environmentName}`);
             } catch (error) {
                 const apiError = error as Error & ApiError;
-                if (apiError.body) {
-                    core.error(`API Error: ${JSON.stringify(apiError.body)}`);
+                if (apiError.response?.data) {
+                    core.error(`API Error: ${JSON.stringify(apiError.response.data)}`);
                 }
                 throw error;
             }
@@ -186,7 +191,8 @@ async function run(): Promise<void> {
 
     } catch (error) {
         const apiError = error as Error & ApiError;
-        core.setFailed(apiError.body?.message != null ? apiError.body?.message : 'Unknown error');
+        const message = apiError.response?.data?.message || apiError.message || 'Unknown error';
+        core.setFailed(message);
     }
 
     return;
