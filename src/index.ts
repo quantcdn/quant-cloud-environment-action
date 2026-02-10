@@ -50,7 +50,7 @@ async function run(): Promise<void> {
         const organisation = core.getInput('organization', { required: true });
         const environmentName = core.getInput('environment_name', { required: true });
 
-        const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io';
+        const baseUrl = (core.getInput('base_url') || 'https://dashboard.quantcdn.io').replace(/\/api\/v3\/?$/, '');
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
