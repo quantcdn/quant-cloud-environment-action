@@ -54,7 +54,7 @@ async function run(): Promise<void> {
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
-        const imageSuffix = core.getInput('image_suffix', { required: false });
+        const imageSuffix = core.getInput('image_suffix', { required: false }).replace(/^-+|-+$/g, '');
         const operation = core.getInput('operation', { required: false }) || 'create';
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });

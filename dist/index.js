@@ -44385,7 +44385,7 @@ async function run() {
         const baseUrl = (core.getInput('base_url') || 'https://dashboard.quantcdn.io').replace(/\/api\/v3\/?$/, '');
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
-        const imageSuffix = core.getInput('image_suffix', { required: false });
+        const imageSuffix = core.getInput('image_suffix', { required: false }).replace(/^-+|-+$/g, '');
         const operation = core.getInput('operation', { required: false }) || 'create';
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
