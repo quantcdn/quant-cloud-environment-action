@@ -4,18 +4,9 @@ import {
     CreateEnvironmentRequest,
     UpdateEnvironmentRequest,
     EnvironmentsApi,
-    Compose
+    Compose,
+    Configuration
 } from 'quant-ts-client';
-
-const apiOpts = (apiKey: string) => {
-    return {
-        applyToRequest: (requestOptions: any) => {
-            if (requestOptions && requestOptions.headers) {
-                requestOptions.headers["Authorization"] = `Bearer ${apiKey}`;
-            }
-        }
-    }
-}
 
 function removeNullValues(obj: any): any {
     if (obj === null || obj === undefined) {
@@ -38,9 +29,12 @@ function removeNullValues(obj: any): any {
 }
 
 interface ApiError {
-    statusCode?: number;
-    body?: {
-        message?: string;
+    status?: number;
+    response?: {
+        status?: number;
+        data?: {
+            message?: string;
+        }
     }
 }
 
@@ -56,16 +50,19 @@ async function run(): Promise<void> {
         const organisation = core.getInput('organization', { required: true });
         const environmentName = core.getInput('environment_name', { required: true });
 
-        const baseUrl = core.getInput('base_url') || 'https://dashboard.quantcdn.io/api/v3';
+        const baseUrl = (core.getInput('base_url') || 'https://dashboard.quantcdn.io').replace(/\/api\/v3\/?$/, '');
 
         const fromEnvironment = core.getInput('from_environment', { required: false });
         const composeSpec = core.getInput('compose_spec', { required: false });
-        const imageSuffix = core.getInput('image_suffix', { required: false });
+        const imageSuffix = core.getInput('image_suffix', { required: false }).replace(/^-+|-+$/g, '');
         const operation = core.getInput('operation', { required: false }) || 'create';
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
-        const client = new EnvironmentsApi(baseUrl);
-        client.setDefaultAuthentication(apiOpts(apiKey));
+        const config = new Configuration({
+            basePath: baseUrl,
+            accessToken: apiKey
+        });
+        const client = new EnvironmentsApi(config);
 
         if (!minCapacity) {
             minCapacity = '1';
@@ -92,7 +89,8 @@ async function run(): Promise<void> {
                 return;
             } catch (error) {
                 const apiError = error as Error & ApiError;
-                if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+                const status = apiError.response?.status || apiError.status;
+                if (status === 404 || apiError.response?.data?.message?.includes('not found')) {
                     core.info(`Environment ${environmentName} does not exist, nothing to delete`);
                     core.setOutput('environment_name', environmentName);
                     return;
@@ -103,12 +101,13 @@ async function run(): Promise<void> {
         }
 
         try {
-            environment = (await client.getEnvironment(organisation, appName, environmentName)).body;
+            environment = (await client.getEnvironment(organisation, appName, environmentName)).data;
             state = 'update';
             core.info(`Environment ${environmentName} exists, will ${operation === 'create' ? 'update' : operation}`);
         } catch (error) {
             const apiError = error as Error & ApiError;
-            if (apiError.statusCode === 404 || apiError.body?.message?.includes('not found')) {
+            const status = apiError.response?.status || apiError.status;
+            if (status === 404 || apiError.response?.data?.message?.includes('not found')) {
                 if (operation === 'update') {
                     throw new Error(`Cannot update environment ${environmentName} - it does not exist`);
                 }
@@ -147,7 +146,7 @@ async function run(): Promise<void> {
             }
             
             const res = await client.createEnvironment(organisation, appName, removeNullValues(createEnvironmentRequest));
-            environment = res.body as Environment;
+            environment = res.data as Environment;
             core.info(`Successfully created environment: ${environment.envName}`);
 
         } else {
@@ -181,8 +180,8 @@ async function run(): Promise<void> {
                 core.info(`Successfully updated environment: ${environmentName}`);
             } catch (error) {
                 const apiError = error as Error & ApiError;
-                if (apiError.body) {
-                    core.error(`API Error: ${JSON.stringify(apiError.body)}`);
+                if (apiError.response?.data) {
+                    core.error(`API Error: ${JSON.stringify(apiError.response.data)}`);
                 }
                 throw error;
             }
@@ -192,7 +191,8 @@ async function run(): Promise<void> {
 
     } catch (error) {
         const apiError = error as Error & ApiError;
-        core.setFailed(apiError.body?.message != null ? apiError.body?.message : 'Unknown error');
+        const message = apiError.response?.data?.message || apiError.message || 'Unknown error';
+        core.setFailed(message);
     }
 
     return;
