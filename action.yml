@@ -37,5 +37,5 @@ outputs:
   environment_name:
     description: 'The name of the created or updated environment'
 runs:
-  using: 'node20'
+  using: 'node24'
   main: 'dist/index.js' 
