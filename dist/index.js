@@ -3195,3418 +3195,7 @@ function copyFile(srcFile, destFile, force) {
 
 /***/ }),
 
-/***/ 1324:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-module.exports =
-{
-  parallel      : __nccwpck_require__(3857),
-  serial        : __nccwpck_require__(1054),
-  serialOrdered : __nccwpck_require__(3961)
-};
-
-
-/***/ }),
-
-/***/ 4818:
-/***/ ((module) => {
-
-// API
-module.exports = abort;
-
-/**
- * Aborts leftover active jobs
- *
- * @param {object} state - current state object
- */
-function abort(state)
-{
-  Object.keys(state.jobs).forEach(clean.bind(state));
-
-  // reset leftover jobs
-  state.jobs = {};
-}
-
-/**
- * Cleans up leftover job by invoking abort function for the provided job id
- *
- * @this  state
- * @param {string|number} key - job id to abort
- */
-function clean(key)
-{
-  if (typeof this.jobs[key] == 'function')
-  {
-    this.jobs[key]();
-  }
-}
-
-
-/***/ }),
-
-/***/ 8452:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var defer = __nccwpck_require__(9200);
-
-// API
-module.exports = async;
-
-/**
- * Runs provided callback asynchronously
- * even if callback itself is not
- *
- * @param   {function} callback - callback to invoke
- * @returns {function} - augmented callback
- */
-function async(callback)
-{
-  var isAsync = false;
-
-  // check if async happened
-  defer(function() { isAsync = true; });
-
-  return function async_callback(err, result)
-  {
-    if (isAsync)
-    {
-      callback(err, result);
-    }
-    else
-    {
-      defer(function nextTick_callback()
-      {
-        callback(err, result);
-      });
-    }
-  };
-}
-
-
-/***/ }),
-
-/***/ 9200:
-/***/ ((module) => {
-
-module.exports = defer;
-
-/**
- * Runs provided function on next iteration of the event loop
- *
- * @param {function} fn - function to run
- */
-function defer(fn)
-{
-  var nextTick = typeof setImmediate == 'function'
-    ? setImmediate
-    : (
-      typeof process == 'object' && typeof process.nextTick == 'function'
-      ? process.nextTick
-      : null
-    );
-
-  if (nextTick)
-  {
-    nextTick(fn);
-  }
-  else
-  {
-    setTimeout(fn, 0);
-  }
-}
-
-
-/***/ }),
-
-/***/ 4902:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var async = __nccwpck_require__(8452)
-  , abort = __nccwpck_require__(4818)
-  ;
-
-// API
-module.exports = iterate;
-
-/**
- * Iterates over each job object
- *
- * @param {array|object} list - array or object (named list) to iterate over
- * @param {function} iterator - iterator to run
- * @param {object} state - current job status
- * @param {function} callback - invoked when all elements processed
- */
-function iterate(list, iterator, state, callback)
-{
-  // store current index
-  var key = state['keyedList'] ? state['keyedList'][state.index] : state.index;
-
-  state.jobs[key] = runJob(iterator, key, list[key], function(error, output)
-  {
-    // don't repeat yourself
-    // skip secondary callbacks
-    if (!(key in state.jobs))
-    {
-      return;
-    }
-
-    // clean up jobs
-    delete state.jobs[key];
-
-    if (error)
-    {
-      // don't process rest of the results
-      // stop still active jobs
-      // and reset the list
-      abort(state);
-    }
-    else
-    {
-      state.results[key] = output;
-    }
-
-    // return salvaged results
-    callback(error, state.results);
-  });
-}
-
-/**
- * Runs iterator over provided job element
- *
- * @param   {function} iterator - iterator to invoke
- * @param   {string|number} key - key/index of the element in the list of jobs
- * @param   {mixed} item - job description
- * @param   {function} callback - invoked after iterator is done with the job
- * @returns {function|mixed} - job abort function or something else
- */
-function runJob(iterator, key, item, callback)
-{
-  var aborter;
-
-  // allow shortcut if iterator expects only two arguments
-  if (iterator.length == 2)
-  {
-    aborter = iterator(item, async(callback));
-  }
-  // otherwise go with full three arguments
-  else
-  {
-    aborter = iterator(item, key, async(callback));
-  }
-
-  return aborter;
-}
-
-
-/***/ }),
-
-/***/ 1721:
-/***/ ((module) => {
-
-// API
-module.exports = state;
-
-/**
- * Creates initial state object
- * for iteration over list
- *
- * @param   {array|object} list - list to iterate over
- * @param   {function|null} sortMethod - function to use for keys sort,
- *                                     or `null` to keep them as is
- * @returns {object} - initial state object
- */
-function state(list, sortMethod)
-{
-  var isNamedList = !Array.isArray(list)
-    , initState =
-    {
-      index    : 0,
-      keyedList: isNamedList || sortMethod ? Object.keys(list) : null,
-      jobs     : {},
-      results  : isNamedList ? {} : [],
-      size     : isNamedList ? Object.keys(list).length : list.length
-    }
-    ;
-
-  if (sortMethod)
-  {
-    // sort array keys based on it's values
-    // sort object's keys just on own merit
-    initState.keyedList.sort(isNamedList ? sortMethod : function(a, b)
-    {
-      return sortMethod(list[a], list[b]);
-    });
-  }
-
-  return initState;
-}
-
-
-/***/ }),
-
-/***/ 3351:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var abort = __nccwpck_require__(4818)
-  , async = __nccwpck_require__(8452)
-  ;
-
-// API
-module.exports = terminator;
-
-/**
- * Terminates jobs in the attached state context
- *
- * @this  AsyncKitState#
- * @param {function} callback - final callback to invoke after termination
- */
-function terminator(callback)
-{
-  if (!Object.keys(this.jobs).length)
-  {
-    return;
-  }
-
-  // fast forward iteration index
-  this.index = this.size;
-
-  // abort jobs
-  abort(this);
-
-  // send back results we have so far
-  async(callback)(null, this.results);
-}
-
-
-/***/ }),
-
-/***/ 3857:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var iterate    = __nccwpck_require__(4902)
-  , initState  = __nccwpck_require__(1721)
-  , terminator = __nccwpck_require__(3351)
-  ;
-
-// Public API
-module.exports = parallel;
-
-/**
- * Runs iterator over provided array elements in parallel
- *
- * @param   {array|object} list - array or object (named list) to iterate over
- * @param   {function} iterator - iterator to run
- * @param   {function} callback - invoked when all elements processed
- * @returns {function} - jobs terminator
- */
-function parallel(list, iterator, callback)
-{
-  var state = initState(list);
-
-  while (state.index < (state['keyedList'] || list).length)
-  {
-    iterate(list, iterator, state, function(error, result)
-    {
-      if (error)
-      {
-        callback(error, result);
-        return;
-      }
-
-      // looks like it's the last one
-      if (Object.keys(state.jobs).length === 0)
-      {
-        callback(null, state.results);
-        return;
-      }
-    });
-
-    state.index++;
-  }
-
-  return terminator.bind(state, callback);
-}
-
-
-/***/ }),
-
-/***/ 1054:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var serialOrdered = __nccwpck_require__(3961);
-
-// Public API
-module.exports = serial;
-
-/**
- * Runs iterator over provided array elements in series
- *
- * @param   {array|object} list - array or object (named list) to iterate over
- * @param   {function} iterator - iterator to run
- * @param   {function} callback - invoked when all elements processed
- * @returns {function} - jobs terminator
- */
-function serial(list, iterator, callback)
-{
-  return serialOrdered(list, iterator, null, callback);
-}
-
-
-/***/ }),
-
-/***/ 3961:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var iterate    = __nccwpck_require__(4902)
-  , initState  = __nccwpck_require__(1721)
-  , terminator = __nccwpck_require__(3351)
-  ;
-
-// Public API
-module.exports = serialOrdered;
-// sorting helpers
-module.exports.ascending  = ascending;
-module.exports.descending = descending;
-
-/**
- * Runs iterator over provided sorted array elements in series
- *
- * @param   {array|object} list - array or object (named list) to iterate over
- * @param   {function} iterator - iterator to run
- * @param   {function} sortMethod - custom sort function
- * @param   {function} callback - invoked when all elements processed
- * @returns {function} - jobs terminator
- */
-function serialOrdered(list, iterator, sortMethod, callback)
-{
-  var state = initState(list, sortMethod);
-
-  iterate(list, iterator, state, function iteratorHandler(error, result)
-  {
-    if (error)
-    {
-      callback(error, result);
-      return;
-    }
-
-    state.index++;
-
-    // are we there yet?
-    if (state.index < (state['keyedList'] || list).length)
-    {
-      iterate(list, iterator, state, iteratorHandler);
-      return;
-    }
-
-    // done here
-    callback(null, state.results);
-  });
-
-  return terminator.bind(state, callback);
-}
-
-/*
- * -- Sort methods
- */
-
-/**
- * sort helper to sort array elements in ascending order
- *
- * @param   {mixed} a - an item to compare
- * @param   {mixed} b - an item to compare
- * @returns {number} - comparison result
- */
-function ascending(a, b)
-{
-  return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/**
- * sort helper to sort array elements in descending order
- *
- * @param   {mixed} a - an item to compare
- * @param   {mixed} b - an item to compare
- * @returns {number} - comparison result
- */
-function descending(a, b)
-{
-  return -1 * ascending(a, b);
-}
-
-
-/***/ }),
-
-/***/ 2639:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var bind = __nccwpck_require__(7564);
-
-var $apply = __nccwpck_require__(3945);
-var $call = __nccwpck_require__(8093);
-var $reflectApply = __nccwpck_require__(1330);
-
-/** @type {import('./actualApply')} */
-module.exports = $reflectApply || bind.call($call, $apply);
-
-
-/***/ }),
-
-/***/ 3945:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./functionApply')} */
-module.exports = Function.prototype.apply;
-
-
-/***/ }),
-
-/***/ 8093:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./functionCall')} */
-module.exports = Function.prototype.call;
-
-
-/***/ }),
-
-/***/ 8705:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var bind = __nccwpck_require__(7564);
-var $TypeError = __nccwpck_require__(3314);
-
-var $call = __nccwpck_require__(8093);
-var $actualApply = __nccwpck_require__(2639);
-
-/** @type {(args: [Function, thisArg?: unknown, ...args: unknown[]]) => Function} TODO FIXME, find a way to use import('.') */
-module.exports = function callBindBasic(args) {
-	if (args.length < 1 || typeof args[0] !== 'function') {
-		throw new $TypeError('a function is required');
-	}
-	return $actualApply(bind, $call, args);
-};
-
-
-/***/ }),
-
-/***/ 1330:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./reflectApply')} */
-module.exports = typeof Reflect !== 'undefined' && Reflect && Reflect.apply;
-
-
-/***/ }),
-
-/***/ 5630:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var util = __nccwpck_require__(9023);
-var Stream = (__nccwpck_require__(2203).Stream);
-var DelayedStream = __nccwpck_require__(2710);
-
-module.exports = CombinedStream;
-function CombinedStream() {
-  this.writable = false;
-  this.readable = true;
-  this.dataSize = 0;
-  this.maxDataSize = 2 * 1024 * 1024;
-  this.pauseStreams = true;
-
-  this._released = false;
-  this._streams = [];
-  this._currentStream = null;
-  this._insideLoop = false;
-  this._pendingNext = false;
-}
-util.inherits(CombinedStream, Stream);
-
-CombinedStream.create = function(options) {
-  var combinedStream = new this();
-
-  options = options || {};
-  for (var option in options) {
-    combinedStream[option] = options[option];
-  }
-
-  return combinedStream;
-};
-
-CombinedStream.isStreamLike = function(stream) {
-  return (typeof stream !== 'function')
-    && (typeof stream !== 'string')
-    && (typeof stream !== 'boolean')
-    && (typeof stream !== 'number')
-    && (!Buffer.isBuffer(stream));
-};
-
-CombinedStream.prototype.append = function(stream) {
-  var isStreamLike = CombinedStream.isStreamLike(stream);
-
-  if (isStreamLike) {
-    if (!(stream instanceof DelayedStream)) {
-      var newStream = DelayedStream.create(stream, {
-        maxDataSize: Infinity,
-        pauseStream: this.pauseStreams,
-      });
-      stream.on('data', this._checkDataSize.bind(this));
-      stream = newStream;
-    }
-
-    this._handleErrors(stream);
-
-    if (this.pauseStreams) {
-      stream.pause();
-    }
-  }
-
-  this._streams.push(stream);
-  return this;
-};
-
-CombinedStream.prototype.pipe = function(dest, options) {
-  Stream.prototype.pipe.call(this, dest, options);
-  this.resume();
-  return dest;
-};
-
-CombinedStream.prototype._getNext = function() {
-  this._currentStream = null;
-
-  if (this._insideLoop) {
-    this._pendingNext = true;
-    return; // defer call
-  }
-
-  this._insideLoop = true;
-  try {
-    do {
-      this._pendingNext = false;
-      this._realGetNext();
-    } while (this._pendingNext);
-  } finally {
-    this._insideLoop = false;
-  }
-};
-
-CombinedStream.prototype._realGetNext = function() {
-  var stream = this._streams.shift();
-
-
-  if (typeof stream == 'undefined') {
-    this.end();
-    return;
-  }
-
-  if (typeof stream !== 'function') {
-    this._pipeNext(stream);
-    return;
-  }
-
-  var getStream = stream;
-  getStream(function(stream) {
-    var isStreamLike = CombinedStream.isStreamLike(stream);
-    if (isStreamLike) {
-      stream.on('data', this._checkDataSize.bind(this));
-      this._handleErrors(stream);
-    }
-
-    this._pipeNext(stream);
-  }.bind(this));
-};
-
-CombinedStream.prototype._pipeNext = function(stream) {
-  this._currentStream = stream;
-
-  var isStreamLike = CombinedStream.isStreamLike(stream);
-  if (isStreamLike) {
-    stream.on('end', this._getNext.bind(this));
-    stream.pipe(this, {end: false});
-    return;
-  }
-
-  var value = stream;
-  this.write(value);
-  this._getNext();
-};
-
-CombinedStream.prototype._handleErrors = function(stream) {
-  var self = this;
-  stream.on('error', function(err) {
-    self._emitError(err);
-  });
-};
-
-CombinedStream.prototype.write = function(data) {
-  this.emit('data', data);
-};
-
-CombinedStream.prototype.pause = function() {
-  if (!this.pauseStreams) {
-    return;
-  }
-
-  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.pause) == 'function') this._currentStream.pause();
-  this.emit('pause');
-};
-
-CombinedStream.prototype.resume = function() {
-  if (!this._released) {
-    this._released = true;
-    this.writable = true;
-    this._getNext();
-  }
-
-  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.resume) == 'function') this._currentStream.resume();
-  this.emit('resume');
-};
-
-CombinedStream.prototype.end = function() {
-  this._reset();
-  this.emit('end');
-};
-
-CombinedStream.prototype.destroy = function() {
-  this._reset();
-  this.emit('close');
-};
-
-CombinedStream.prototype._reset = function() {
-  this.writable = false;
-  this._streams = [];
-  this._currentStream = null;
-};
-
-CombinedStream.prototype._checkDataSize = function() {
-  this._updateDataSize();
-  if (this.dataSize <= this.maxDataSize) {
-    return;
-  }
-
-  var message =
-    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.';
-  this._emitError(new Error(message));
-};
-
-CombinedStream.prototype._updateDataSize = function() {
-  this.dataSize = 0;
-
-  var self = this;
-  this._streams.forEach(function(stream) {
-    if (!stream.dataSize) {
-      return;
-    }
-
-    self.dataSize += stream.dataSize;
-  });
-
-  if (this._currentStream && this._currentStream.dataSize) {
-    this.dataSize += this._currentStream.dataSize;
-  }
-};
-
-CombinedStream.prototype._emitError = function(err) {
-  this._reset();
-  this.emit('error', err);
-};
-
-
-/***/ }),
-
-/***/ 2710:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var Stream = (__nccwpck_require__(2203).Stream);
-var util = __nccwpck_require__(9023);
-
-module.exports = DelayedStream;
-function DelayedStream() {
-  this.source = null;
-  this.dataSize = 0;
-  this.maxDataSize = 1024 * 1024;
-  this.pauseStream = true;
-
-  this._maxDataSizeExceeded = false;
-  this._released = false;
-  this._bufferedEvents = [];
-}
-util.inherits(DelayedStream, Stream);
-
-DelayedStream.create = function(source, options) {
-  var delayedStream = new this();
-
-  options = options || {};
-  for (var option in options) {
-    delayedStream[option] = options[option];
-  }
-
-  delayedStream.source = source;
-
-  var realEmit = source.emit;
-  source.emit = function() {
-    delayedStream._handleEmit(arguments);
-    return realEmit.apply(source, arguments);
-  };
-
-  source.on('error', function() {});
-  if (delayedStream.pauseStream) {
-    source.pause();
-  }
-
-  return delayedStream;
-};
-
-Object.defineProperty(DelayedStream.prototype, 'readable', {
-  configurable: true,
-  enumerable: true,
-  get: function() {
-    return this.source.readable;
-  }
-});
-
-DelayedStream.prototype.setEncoding = function() {
-  return this.source.setEncoding.apply(this.source, arguments);
-};
-
-DelayedStream.prototype.resume = function() {
-  if (!this._released) {
-    this.release();
-  }
-
-  this.source.resume();
-};
-
-DelayedStream.prototype.pause = function() {
-  this.source.pause();
-};
-
-DelayedStream.prototype.release = function() {
-  this._released = true;
-
-  this._bufferedEvents.forEach(function(args) {
-    this.emit.apply(this, args);
-  }.bind(this));
-  this._bufferedEvents = [];
-};
-
-DelayedStream.prototype.pipe = function() {
-  var r = Stream.prototype.pipe.apply(this, arguments);
-  this.resume();
-  return r;
-};
-
-DelayedStream.prototype._handleEmit = function(args) {
-  if (this._released) {
-    this.emit.apply(this, args);
-    return;
-  }
-
-  if (args[0] === 'data') {
-    this.dataSize += args[1].length;
-    this._checkIfMaxDataSizeExceeded();
-  }
-
-  this._bufferedEvents.push(args);
-};
-
-DelayedStream.prototype._checkIfMaxDataSizeExceeded = function() {
-  if (this._maxDataSizeExceeded) {
-    return;
-  }
-
-  if (this.dataSize <= this.maxDataSize) {
-    return;
-  }
-
-  this._maxDataSizeExceeded = true;
-  var message =
-    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.'
-  this.emit('error', new Error(message));
-};
-
-
-/***/ }),
-
-/***/ 6669:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var callBind = __nccwpck_require__(8705);
-var gOPD = __nccwpck_require__(3170);
-
-var hasProtoAccessor;
-try {
-	// eslint-disable-next-line no-extra-parens, no-proto
-	hasProtoAccessor = /** @type {{ __proto__?: typeof Array.prototype }} */ ([]).__proto__ === Array.prototype;
-} catch (e) {
-	if (!e || typeof e !== 'object' || !('code' in e) || e.code !== 'ERR_PROTO_ACCESS') {
-		throw e;
-	}
-}
-
-// eslint-disable-next-line no-extra-parens
-var desc = !!hasProtoAccessor && gOPD && gOPD(Object.prototype, /** @type {keyof typeof Object.prototype} */ ('__proto__'));
-
-var $Object = Object;
-var $getPrototypeOf = $Object.getPrototypeOf;
-
-/** @type {import('./get')} */
-module.exports = desc && typeof desc.get === 'function'
-	? callBind([desc.get])
-	: typeof $getPrototypeOf === 'function'
-		? /** @type {import('./get')} */ function getDunder(value) {
-			// eslint-disable-next-line eqeqeq
-			return $getPrototypeOf(value == null ? value : $Object(value));
-		}
-		: false;
-
-
-/***/ }),
-
-/***/ 9094:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('.')} */
-var $defineProperty = Object.defineProperty || false;
-if ($defineProperty) {
-	try {
-		$defineProperty({}, 'a', { value: 1 });
-	} catch (e) {
-		// IE 8 has a broken defineProperty
-		$defineProperty = false;
-	}
-}
-
-module.exports = $defineProperty;
-
-
-/***/ }),
-
-/***/ 3056:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./eval')} */
-module.exports = EvalError;
-
-
-/***/ }),
-
-/***/ 1620:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('.')} */
-module.exports = Error;
-
-
-/***/ }),
-
-/***/ 4585:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./range')} */
-module.exports = RangeError;
-
-
-/***/ }),
-
-/***/ 6905:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./ref')} */
-module.exports = ReferenceError;
-
-
-/***/ }),
-
-/***/ 105:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./syntax')} */
-module.exports = SyntaxError;
-
-
-/***/ }),
-
-/***/ 3314:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./type')} */
-module.exports = TypeError;
-
-
-/***/ }),
-
-/***/ 2578:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./uri')} */
-module.exports = URIError;
-
-
-/***/ }),
-
-/***/ 5399:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('.')} */
-module.exports = Object;
-
-
-/***/ }),
-
-/***/ 8700:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var GetIntrinsic = __nccwpck_require__(470);
-
-var $defineProperty = GetIntrinsic('%Object.defineProperty%', true);
-
-var hasToStringTag = __nccwpck_require__(5479)();
-var hasOwn = __nccwpck_require__(4076);
-var $TypeError = __nccwpck_require__(3314);
-
-var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
-
-/** @type {import('.')} */
-module.exports = function setToStringTag(object, value) {
-	var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;
-	var nonConfigurable = arguments.length > 2 && !!arguments[2] && arguments[2].nonConfigurable;
-	if (
-		(typeof overrideIfSet !== 'undefined' && typeof overrideIfSet !== 'boolean')
-		|| (typeof nonConfigurable !== 'undefined' && typeof nonConfigurable !== 'boolean')
-	) {
-		throw new $TypeError('if provided, the `overrideIfSet` and `nonConfigurable` options must be booleans');
-	}
-	if (toStringTag && (overrideIfSet || !hasOwn(object, toStringTag))) {
-		if ($defineProperty) {
-			$defineProperty(object, toStringTag, {
-				configurable: !nonConfigurable,
-				enumerable: false,
-				value: value,
-				writable: false
-			});
-		} else {
-			object[toStringTag] = value; // eslint-disable-line no-param-reassign
-		}
-	}
-};
-
-
-/***/ }),
-
-/***/ 4778:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var debug;
-
-module.exports = function () {
-  if (!debug) {
-    try {
-      /* eslint global-require: off */
-      debug = __nccwpck_require__(8422)("follow-redirects");
-    }
-    catch (error) { /* */ }
-    if (typeof debug !== "function") {
-      debug = function () { /* */ };
-    }
-  }
-  debug.apply(null, arguments);
-};
-
-
-/***/ }),
-
-/***/ 1573:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-var url = __nccwpck_require__(7016);
-var URL = url.URL;
-var http = __nccwpck_require__(8611);
-var https = __nccwpck_require__(5692);
-var Writable = (__nccwpck_require__(2203).Writable);
-var assert = __nccwpck_require__(2613);
-var debug = __nccwpck_require__(4778);
-
-// Preventive platform detection
-// istanbul ignore next
-(function detectUnsupportedEnvironment() {
-  var looksLikeNode = typeof process !== "undefined";
-  var looksLikeBrowser = typeof window !== "undefined" && typeof document !== "undefined";
-  var looksLikeV8 = isFunction(Error.captureStackTrace);
-  if (!looksLikeNode && (looksLikeBrowser || !looksLikeV8)) {
-    console.warn("The follow-redirects package should be excluded from browser builds.");
-  }
-}());
-
-// Whether to use the native URL object or the legacy url module
-var useNativeURL = false;
-try {
-  assert(new URL(""));
-}
-catch (error) {
-  useNativeURL = error.code === "ERR_INVALID_URL";
-}
-
-// URL fields to preserve in copy operations
-var preservedUrlFields = [
-  "auth",
-  "host",
-  "hostname",
-  "href",
-  "path",
-  "pathname",
-  "port",
-  "protocol",
-  "query",
-  "search",
-  "hash",
-];
-
-// Create handlers that pass events from native requests
-var events = ["abort", "aborted", "connect", "error", "socket", "timeout"];
-var eventHandlers = Object.create(null);
-events.forEach(function (event) {
-  eventHandlers[event] = function (arg1, arg2, arg3) {
-    this._redirectable.emit(event, arg1, arg2, arg3);
-  };
-});
-
-// Error types with codes
-var InvalidUrlError = createErrorType(
-  "ERR_INVALID_URL",
-  "Invalid URL",
-  TypeError
-);
-var RedirectionError = createErrorType(
-  "ERR_FR_REDIRECTION_FAILURE",
-  "Redirected request failed"
-);
-var TooManyRedirectsError = createErrorType(
-  "ERR_FR_TOO_MANY_REDIRECTS",
-  "Maximum number of redirects exceeded",
-  RedirectionError
-);
-var MaxBodyLengthExceededError = createErrorType(
-  "ERR_FR_MAX_BODY_LENGTH_EXCEEDED",
-  "Request body larger than maxBodyLength limit"
-);
-var WriteAfterEndError = createErrorType(
-  "ERR_STREAM_WRITE_AFTER_END",
-  "write after end"
-);
-
-// istanbul ignore next
-var destroy = Writable.prototype.destroy || noop;
-
-// An HTTP(S) request that can be redirected
-function RedirectableRequest(options, responseCallback) {
-  // Initialize the request
-  Writable.call(this);
-  this._sanitizeOptions(options);
-  this._options = options;
-  this._ended = false;
-  this._ending = false;
-  this._redirectCount = 0;
-  this._redirects = [];
-  this._requestBodyLength = 0;
-  this._requestBodyBuffers = [];
-
-  // Attach a callback if passed
-  if (responseCallback) {
-    this.on("response", responseCallback);
-  }
-
-  // React to responses of native requests
-  var self = this;
-  this._onNativeResponse = function (response) {
-    try {
-      self._processResponse(response);
-    }
-    catch (cause) {
-      self.emit("error", cause instanceof RedirectionError ?
-        cause : new RedirectionError({ cause: cause }));
-    }
-  };
-
-  // Perform the first request
-  this._performRequest();
-}
-RedirectableRequest.prototype = Object.create(Writable.prototype);
-
-RedirectableRequest.prototype.abort = function () {
-  destroyRequest(this._currentRequest);
-  this._currentRequest.abort();
-  this.emit("abort");
-};
-
-RedirectableRequest.prototype.destroy = function (error) {
-  destroyRequest(this._currentRequest, error);
-  destroy.call(this, error);
-  return this;
-};
-
-// Writes buffered data to the current native request
-RedirectableRequest.prototype.write = function (data, encoding, callback) {
-  // Writing is not allowed if end has been called
-  if (this._ending) {
-    throw new WriteAfterEndError();
-  }
-
-  // Validate input and shift parameters if necessary
-  if (!isString(data) && !isBuffer(data)) {
-    throw new TypeError("data should be a string, Buffer or Uint8Array");
-  }
-  if (isFunction(encoding)) {
-    callback = encoding;
-    encoding = null;
-  }
-
-  // Ignore empty buffers, since writing them doesn't invoke the callback
-  // https://github.com/nodejs/node/issues/22066
-  if (data.length === 0) {
-    if (callback) {
-      callback();
-    }
-    return;
-  }
-  // Only write when we don't exceed the maximum body length
-  if (this._requestBodyLength + data.length <= this._options.maxBodyLength) {
-    this._requestBodyLength += data.length;
-    this._requestBodyBuffers.push({ data: data, encoding: encoding });
-    this._currentRequest.write(data, encoding, callback);
-  }
-  // Error when we exceed the maximum body length
-  else {
-    this.emit("error", new MaxBodyLengthExceededError());
-    this.abort();
-  }
-};
-
-// Ends the current native request
-RedirectableRequest.prototype.end = function (data, encoding, callback) {
-  // Shift parameters if necessary
-  if (isFunction(data)) {
-    callback = data;
-    data = encoding = null;
-  }
-  else if (isFunction(encoding)) {
-    callback = encoding;
-    encoding = null;
-  }
-
-  // Write data if needed and end
-  if (!data) {
-    this._ended = this._ending = true;
-    this._currentRequest.end(null, null, callback);
-  }
-  else {
-    var self = this;
-    var currentRequest = this._currentRequest;
-    this.write(data, encoding, function () {
-      self._ended = true;
-      currentRequest.end(null, null, callback);
-    });
-    this._ending = true;
-  }
-};
-
-// Sets a header value on the current native request
-RedirectableRequest.prototype.setHeader = function (name, value) {
-  this._options.headers[name] = value;
-  this._currentRequest.setHeader(name, value);
-};
-
-// Clears a header value on the current native request
-RedirectableRequest.prototype.removeHeader = function (name) {
-  delete this._options.headers[name];
-  this._currentRequest.removeHeader(name);
-};
-
-// Global timeout for all underlying requests
-RedirectableRequest.prototype.setTimeout = function (msecs, callback) {
-  var self = this;
-
-  // Destroys the socket on timeout
-  function destroyOnTimeout(socket) {
-    socket.setTimeout(msecs);
-    socket.removeListener("timeout", socket.destroy);
-    socket.addListener("timeout", socket.destroy);
-  }
-
-  // Sets up a timer to trigger a timeout event
-  function startTimer(socket) {
-    if (self._timeout) {
-      clearTimeout(self._timeout);
-    }
-    self._timeout = setTimeout(function () {
-      self.emit("timeout");
-      clearTimer();
-    }, msecs);
-    destroyOnTimeout(socket);
-  }
-
-  // Stops a timeout from triggering
-  function clearTimer() {
-    // Clear the timeout
-    if (self._timeout) {
-      clearTimeout(self._timeout);
-      self._timeout = null;
-    }
-
-    // Clean up all attached listeners
-    self.removeListener("abort", clearTimer);
-    self.removeListener("error", clearTimer);
-    self.removeListener("response", clearTimer);
-    self.removeListener("close", clearTimer);
-    if (callback) {
-      self.removeListener("timeout", callback);
-    }
-    if (!self.socket) {
-      self._currentRequest.removeListener("socket", startTimer);
-    }
-  }
-
-  // Attach callback if passed
-  if (callback) {
-    this.on("timeout", callback);
-  }
-
-  // Start the timer if or when the socket is opened
-  if (this.socket) {
-    startTimer(this.socket);
-  }
-  else {
-    this._currentRequest.once("socket", startTimer);
-  }
-
-  // Clean up on events
-  this.on("socket", destroyOnTimeout);
-  this.on("abort", clearTimer);
-  this.on("error", clearTimer);
-  this.on("response", clearTimer);
-  this.on("close", clearTimer);
-
-  return this;
-};
-
-// Proxy all other public ClientRequest methods
-[
-  "flushHeaders", "getHeader",
-  "setNoDelay", "setSocketKeepAlive",
-].forEach(function (method) {
-  RedirectableRequest.prototype[method] = function (a, b) {
-    return this._currentRequest[method](a, b);
-  };
-});
-
-// Proxy all public ClientRequest properties
-["aborted", "connection", "socket"].forEach(function (property) {
-  Object.defineProperty(RedirectableRequest.prototype, property, {
-    get: function () { return this._currentRequest[property]; },
-  });
-});
-
-RedirectableRequest.prototype._sanitizeOptions = function (options) {
-  // Ensure headers are always present
-  if (!options.headers) {
-    options.headers = {};
-  }
-
-  // Since http.request treats host as an alias of hostname,
-  // but the url module interprets host as hostname plus port,
-  // eliminate the host property to avoid confusion.
-  if (options.host) {
-    // Use hostname if set, because it has precedence
-    if (!options.hostname) {
-      options.hostname = options.host;
-    }
-    delete options.host;
-  }
-
-  // Complete the URL object when necessary
-  if (!options.pathname && options.path) {
-    var searchPos = options.path.indexOf("?");
-    if (searchPos < 0) {
-      options.pathname = options.path;
-    }
-    else {
-      options.pathname = options.path.substring(0, searchPos);
-      options.search = options.path.substring(searchPos);
-    }
-  }
-};
-
-
-// Executes the next native request (initial or redirect)
-RedirectableRequest.prototype._performRequest = function () {
-  // Load the native protocol
-  var protocol = this._options.protocol;
-  var nativeProtocol = this._options.nativeProtocols[protocol];
-  if (!nativeProtocol) {
-    throw new TypeError("Unsupported protocol " + protocol);
-  }
-
-  // If specified, use the agent corresponding to the protocol
-  // (HTTP and HTTPS use different types of agents)
-  if (this._options.agents) {
-    var scheme = protocol.slice(0, -1);
-    this._options.agent = this._options.agents[scheme];
-  }
-
-  // Create the native request and set up its event handlers
-  var request = this._currentRequest =
-        nativeProtocol.request(this._options, this._onNativeResponse);
-  request._redirectable = this;
-  for (var event of events) {
-    request.on(event, eventHandlers[event]);
-  }
-
-  // RFC7230§5.3.1: When making a request directly to an origin server, […]
-  // a client MUST send only the absolute path […] as the request-target.
-  this._currentUrl = /^\//.test(this._options.path) ?
-    url.format(this._options) :
-    // When making a request to a proxy, […]
-    // a client MUST send the target URI in absolute-form […].
-    this._options.path;
-
-  // End a redirected request
-  // (The first request must be ended explicitly with RedirectableRequest#end)
-  if (this._isRedirect) {
-    // Write the request entity and end
-    var i = 0;
-    var self = this;
-    var buffers = this._requestBodyBuffers;
-    (function writeNext(error) {
-      // Only write if this request has not been redirected yet
-      // istanbul ignore else
-      if (request === self._currentRequest) {
-        // Report any write errors
-        // istanbul ignore if
-        if (error) {
-          self.emit("error", error);
-        }
-        // Write the next buffer if there are still left
-        else if (i < buffers.length) {
-          var buffer = buffers[i++];
-          // istanbul ignore else
-          if (!request.finished) {
-            request.write(buffer.data, buffer.encoding, writeNext);
-          }
-        }
-        // End the request if `end` has been called on us
-        else if (self._ended) {
-          request.end();
-        }
-      }
-    }());
-  }
-};
-
-// Processes a response from the current native request
-RedirectableRequest.prototype._processResponse = function (response) {
-  // Store the redirected response
-  var statusCode = response.statusCode;
-  if (this._options.trackRedirects) {
-    this._redirects.push({
-      url: this._currentUrl,
-      headers: response.headers,
-      statusCode: statusCode,
-    });
-  }
-
-  // RFC7231§6.4: The 3xx (Redirection) class of status code indicates
-  // that further action needs to be taken by the user agent in order to
-  // fulfill the request. If a Location header field is provided,
-  // the user agent MAY automatically redirect its request to the URI
-  // referenced by the Location field value,
-  // even if the specific status code is not understood.
-
-  // If the response is not a redirect; return it as-is
-  var location = response.headers.location;
-  if (!location || this._options.followRedirects === false ||
-      statusCode < 300 || statusCode >= 400) {
-    response.responseUrl = this._currentUrl;
-    response.redirects = this._redirects;
-    this.emit("response", response);
-
-    // Clean up
-    this._requestBodyBuffers = [];
-    return;
-  }
-
-  // The response is a redirect, so abort the current request
-  destroyRequest(this._currentRequest);
-  // Discard the remainder of the response to avoid waiting for data
-  response.destroy();
-
-  // RFC7231§6.4: A client SHOULD detect and intervene
-  // in cyclical redirections (i.e., "infinite" redirection loops).
-  if (++this._redirectCount > this._options.maxRedirects) {
-    throw new TooManyRedirectsError();
-  }
-
-  // Store the request headers if applicable
-  var requestHeaders;
-  var beforeRedirect = this._options.beforeRedirect;
-  if (beforeRedirect) {
-    requestHeaders = Object.assign({
-      // The Host header was set by nativeProtocol.request
-      Host: response.req.getHeader("host"),
-    }, this._options.headers);
-  }
-
-  // RFC7231§6.4: Automatic redirection needs to done with
-  // care for methods not known to be safe, […]
-  // RFC7231§6.4.2–3: For historical reasons, a user agent MAY change
-  // the request method from POST to GET for the subsequent request.
-  var method = this._options.method;
-  if ((statusCode === 301 || statusCode === 302) && this._options.method === "POST" ||
-      // RFC7231§6.4.4: The 303 (See Other) status code indicates that
-      // the server is redirecting the user agent to a different resource […]
-      // A user agent can perform a retrieval request targeting that URI
-      // (a GET or HEAD request if using HTTP) […]
-      (statusCode === 303) && !/^(?:GET|HEAD)$/.test(this._options.method)) {
-    this._options.method = "GET";
-    // Drop a possible entity and headers related to it
-    this._requestBodyBuffers = [];
-    removeMatchingHeaders(/^content-/i, this._options.headers);
-  }
-
-  // Drop the Host header, as the redirect might lead to a different host
-  var currentHostHeader = removeMatchingHeaders(/^host$/i, this._options.headers);
-
-  // If the redirect is relative, carry over the host of the last request
-  var currentUrlParts = parseUrl(this._currentUrl);
-  var currentHost = currentHostHeader || currentUrlParts.host;
-  var currentUrl = /^\w+:/.test(location) ? this._currentUrl :
-    url.format(Object.assign(currentUrlParts, { host: currentHost }));
-
-  // Create the redirected request
-  var redirectUrl = resolveUrl(location, currentUrl);
-  debug("redirecting to", redirectUrl.href);
-  this._isRedirect = true;
-  spreadUrlObject(redirectUrl, this._options);
-
-  // Drop confidential headers when redirecting to a less secure protocol
-  // or to a different domain that is not a superdomain
-  if (redirectUrl.protocol !== currentUrlParts.protocol &&
-     redirectUrl.protocol !== "https:" ||
-     redirectUrl.host !== currentHost &&
-     !isSubdomain(redirectUrl.host, currentHost)) {
-    removeMatchingHeaders(/^(?:(?:proxy-)?authorization|cookie)$/i, this._options.headers);
-  }
-
-  // Evaluate the beforeRedirect callback
-  if (isFunction(beforeRedirect)) {
-    var responseDetails = {
-      headers: response.headers,
-      statusCode: statusCode,
-    };
-    var requestDetails = {
-      url: currentUrl,
-      method: method,
-      headers: requestHeaders,
-    };
-    beforeRedirect(this._options, responseDetails, requestDetails);
-    this._sanitizeOptions(this._options);
-  }
-
-  // Perform the redirected request
-  this._performRequest();
-};
-
-// Wraps the key/value object of protocols with redirect functionality
-function wrap(protocols) {
-  // Default settings
-  var exports = {
-    maxRedirects: 21,
-    maxBodyLength: 10 * 1024 * 1024,
-  };
-
-  // Wrap each protocol
-  var nativeProtocols = {};
-  Object.keys(protocols).forEach(function (scheme) {
-    var protocol = scheme + ":";
-    var nativeProtocol = nativeProtocols[protocol] = protocols[scheme];
-    var wrappedProtocol = exports[scheme] = Object.create(nativeProtocol);
-
-    // Executes a request, following redirects
-    function request(input, options, callback) {
-      // Parse parameters, ensuring that input is an object
-      if (isURL(input)) {
-        input = spreadUrlObject(input);
-      }
-      else if (isString(input)) {
-        input = spreadUrlObject(parseUrl(input));
-      }
-      else {
-        callback = options;
-        options = validateUrl(input);
-        input = { protocol: protocol };
-      }
-      if (isFunction(options)) {
-        callback = options;
-        options = null;
-      }
-
-      // Set defaults
-      options = Object.assign({
-        maxRedirects: exports.maxRedirects,
-        maxBodyLength: exports.maxBodyLength,
-      }, input, options);
-      options.nativeProtocols = nativeProtocols;
-      if (!isString(options.host) && !isString(options.hostname)) {
-        options.hostname = "::1";
-      }
-
-      assert.equal(options.protocol, protocol, "protocol mismatch");
-      debug("options", options);
-      return new RedirectableRequest(options, callback);
-    }
-
-    // Executes a GET request, following redirects
-    function get(input, options, callback) {
-      var wrappedRequest = wrappedProtocol.request(input, options, callback);
-      wrappedRequest.end();
-      return wrappedRequest;
-    }
-
-    // Expose the properties on the wrapped protocol
-    Object.defineProperties(wrappedProtocol, {
-      request: { value: request, configurable: true, enumerable: true, writable: true },
-      get: { value: get, configurable: true, enumerable: true, writable: true },
-    });
-  });
-  return exports;
-}
-
-function noop() { /* empty */ }
-
-function parseUrl(input) {
-  var parsed;
-  // istanbul ignore else
-  if (useNativeURL) {
-    parsed = new URL(input);
-  }
-  else {
-    // Ensure the URL is valid and absolute
-    parsed = validateUrl(url.parse(input));
-    if (!isString(parsed.protocol)) {
-      throw new InvalidUrlError({ input });
-    }
-  }
-  return parsed;
-}
-
-function resolveUrl(relative, base) {
-  // istanbul ignore next
-  return useNativeURL ? new URL(relative, base) : parseUrl(url.resolve(base, relative));
-}
-
-function validateUrl(input) {
-  if (/^\[/.test(input.hostname) && !/^\[[:0-9a-f]+\]$/i.test(input.hostname)) {
-    throw new InvalidUrlError({ input: input.href || input });
-  }
-  if (/^\[/.test(input.host) && !/^\[[:0-9a-f]+\](:\d+)?$/i.test(input.host)) {
-    throw new InvalidUrlError({ input: input.href || input });
-  }
-  return input;
-}
-
-function spreadUrlObject(urlObject, target) {
-  var spread = target || {};
-  for (var key of preservedUrlFields) {
-    spread[key] = urlObject[key];
-  }
-
-  // Fix IPv6 hostname
-  if (spread.hostname.startsWith("[")) {
-    spread.hostname = spread.hostname.slice(1, -1);
-  }
-  // Ensure port is a number
-  if (spread.port !== "") {
-    spread.port = Number(spread.port);
-  }
-  // Concatenate path
-  spread.path = spread.search ? spread.pathname + spread.search : spread.pathname;
-
-  return spread;
-}
-
-function removeMatchingHeaders(regex, headers) {
-  var lastValue;
-  for (var header in headers) {
-    if (regex.test(header)) {
-      lastValue = headers[header];
-      delete headers[header];
-    }
-  }
-  return (lastValue === null || typeof lastValue === "undefined") ?
-    undefined : String(lastValue).trim();
-}
-
-function createErrorType(code, message, baseClass) {
-  // Create constructor
-  function CustomError(properties) {
-    // istanbul ignore else
-    if (isFunction(Error.captureStackTrace)) {
-      Error.captureStackTrace(this, this.constructor);
-    }
-    Object.assign(this, properties || {});
-    this.code = code;
-    this.message = this.cause ? message + ": " + this.cause.message : message;
-  }
-
-  // Attach constructor and set default properties
-  CustomError.prototype = new (baseClass || Error)();
-  Object.defineProperties(CustomError.prototype, {
-    constructor: {
-      value: CustomError,
-      enumerable: false,
-    },
-    name: {
-      value: "Error [" + code + "]",
-      enumerable: false,
-    },
-  });
-  return CustomError;
-}
-
-function destroyRequest(request, error) {
-  for (var event of events) {
-    request.removeListener(event, eventHandlers[event]);
-  }
-  request.on("error", noop);
-  request.destroy(error);
-}
-
-function isSubdomain(subdomain, domain) {
-  assert(isString(subdomain) && isString(domain));
-  var dot = subdomain.length - domain.length - 1;
-  return dot > 0 && subdomain[dot] === "." && subdomain.endsWith(domain);
-}
-
-function isString(value) {
-  return typeof value === "string" || value instanceof String;
-}
-
-function isFunction(value) {
-  return typeof value === "function";
-}
-
-function isBuffer(value) {
-  return typeof value === "object" && ("length" in value);
-}
-
-function isURL(value) {
-  return URL && value instanceof URL;
-}
-
-// Exports
-module.exports = wrap({ http: http, https: https });
-module.exports.wrap = wrap;
-
-
-/***/ }),
-
-/***/ 6454:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var CombinedStream = __nccwpck_require__(5630);
-var util = __nccwpck_require__(9023);
-var path = __nccwpck_require__(6928);
-var http = __nccwpck_require__(8611);
-var https = __nccwpck_require__(5692);
-var parseUrl = (__nccwpck_require__(7016).parse);
-var fs = __nccwpck_require__(9896);
-var Stream = (__nccwpck_require__(2203).Stream);
-var crypto = __nccwpck_require__(6982);
-var mime = __nccwpck_require__(4096);
-var asynckit = __nccwpck_require__(1324);
-var setToStringTag = __nccwpck_require__(8700);
-var hasOwn = __nccwpck_require__(4076);
-var populate = __nccwpck_require__(1835);
-
-/**
- * Create readable "multipart/form-data" streams.
- * Can be used to submit forms
- * and file uploads to other web applications.
- *
- * @constructor
- * @param {object} options - Properties to be added/overriden for FormData and CombinedStream
- */
-function FormData(options) {
-  if (!(this instanceof FormData)) {
-    return new FormData(options);
-  }
-
-  this._overheadLength = 0;
-  this._valueLength = 0;
-  this._valuesToMeasure = [];
-
-  CombinedStream.call(this);
-
-  options = options || {}; // eslint-disable-line no-param-reassign
-  for (var option in options) { // eslint-disable-line no-restricted-syntax
-    this[option] = options[option];
-  }
-}
-
-// make it a Stream
-util.inherits(FormData, CombinedStream);
-
-FormData.LINE_BREAK = '\r\n';
-FormData.DEFAULT_CONTENT_TYPE = 'application/octet-stream';
-
-FormData.prototype.append = function (field, value, options) {
-  options = options || {}; // eslint-disable-line no-param-reassign
-
-  // allow filename as single option
-  if (typeof options === 'string') {
-    options = { filename: options }; // eslint-disable-line no-param-reassign
-  }
-
-  var append = CombinedStream.prototype.append.bind(this);
-
-  // all that streamy business can't handle numbers
-  if (typeof value === 'number' || value == null) {
-    value = String(value); // eslint-disable-line no-param-reassign
-  }
-
-  // https://github.com/felixge/node-form-data/issues/38
-  if (Array.isArray(value)) {
-    /*
-     * Please convert your array into string
-     * the way web server expects it
-     */
-    this._error(new Error('Arrays are not supported.'));
-    return;
-  }
-
-  var header = this._multiPartHeader(field, value, options);
-  var footer = this._multiPartFooter();
-
-  append(header);
-  append(value);
-  append(footer);
-
-  // pass along options.knownLength
-  this._trackLength(header, value, options);
-};
-
-FormData.prototype._trackLength = function (header, value, options) {
-  var valueLength = 0;
-
-  /*
-   * used w/ getLengthSync(), when length is known.
-   * e.g. for streaming directly from a remote server,
-   * w/ a known file a size, and not wanting to wait for
-   * incoming file to finish to get its size.
-   */
-  if (options.knownLength != null) {
-    valueLength += Number(options.knownLength);
-  } else if (Buffer.isBuffer(value)) {
-    valueLength = value.length;
-  } else if (typeof value === 'string') {
-    valueLength = Buffer.byteLength(value);
-  }
-
-  this._valueLength += valueLength;
-
-  // @check why add CRLF? does this account for custom/multiple CRLFs?
-  this._overheadLength += Buffer.byteLength(header) + FormData.LINE_BREAK.length;
-
-  // empty or either doesn't have path or not an http response or not a stream
-  if (!value || (!value.path && !(value.readable && hasOwn(value, 'httpVersion')) && !(value instanceof Stream))) {
-    return;
-  }
-
-  // no need to bother with the length
-  if (!options.knownLength) {
-    this._valuesToMeasure.push(value);
-  }
-};
-
-FormData.prototype._lengthRetriever = function (value, callback) {
-  if (hasOwn(value, 'fd')) {
-    // take read range into a account
-    // `end` = Infinity –> read file till the end
-    //
-    // TODO: Looks like there is bug in Node fs.createReadStream
-    // it doesn't respect `end` options without `start` options
-    // Fix it when node fixes it.
-    // https://github.com/joyent/node/issues/7819
-    if (value.end != undefined && value.end != Infinity && value.start != undefined) {
-      // when end specified
-      // no need to calculate range
-      // inclusive, starts with 0
-      callback(null, value.end + 1 - (value.start ? value.start : 0)); // eslint-disable-line callback-return
-
-      // not that fast snoopy
-    } else {
-      // still need to fetch file size from fs
-      fs.stat(value.path, function (err, stat) {
-        if (err) {
-          callback(err);
-          return;
-        }
-
-        // update final size based on the range options
-        var fileSize = stat.size - (value.start ? value.start : 0);
-        callback(null, fileSize);
-      });
-    }
-
-    // or http response
-  } else if (hasOwn(value, 'httpVersion')) {
-    callback(null, Number(value.headers['content-length'])); // eslint-disable-line callback-return
-
-    // or request stream http://github.com/mikeal/request
-  } else if (hasOwn(value, 'httpModule')) {
-    // wait till response come back
-    value.on('response', function (response) {
-      value.pause();
-      callback(null, Number(response.headers['content-length']));
-    });
-    value.resume();
-
-    // something else
-  } else {
-    callback('Unknown stream'); // eslint-disable-line callback-return
-  }
-};
-
-FormData.prototype._multiPartHeader = function (field, value, options) {
-  /*
-   * custom header specified (as string)?
-   * it becomes responsible for boundary
-   * (e.g. to handle extra CRLFs on .NET servers)
-   */
-  if (typeof options.header === 'string') {
-    return options.header;
-  }
-
-  var contentDisposition = this._getContentDisposition(value, options);
-  var contentType = this._getContentType(value, options);
-
-  var contents = '';
-  var headers = {
-    // add custom disposition as third element or keep it two elements if not
-    'Content-Disposition': ['form-data', 'name="' + field + '"'].concat(contentDisposition || []),
-    // if no content type. allow it to be empty array
-    'Content-Type': [].concat(contentType || [])
-  };
-
-  // allow custom headers.
-  if (typeof options.header === 'object') {
-    populate(headers, options.header);
-  }
-
-  var header;
-  for (var prop in headers) { // eslint-disable-line no-restricted-syntax
-    if (hasOwn(headers, prop)) {
-      header = headers[prop];
-
-      // skip nullish headers.
-      if (header == null) {
-        continue; // eslint-disable-line no-restricted-syntax, no-continue
-      }
-
-      // convert all headers to arrays.
-      if (!Array.isArray(header)) {
-        header = [header];
-      }
-
-      // add non-empty headers.
-      if (header.length) {
-        contents += prop + ': ' + header.join('; ') + FormData.LINE_BREAK;
-      }
-    }
-  }
-
-  return '--' + this.getBoundary() + FormData.LINE_BREAK + contents + FormData.LINE_BREAK;
-};
-
-FormData.prototype._getContentDisposition = function (value, options) { // eslint-disable-line consistent-return
-  var filename;
-
-  if (typeof options.filepath === 'string') {
-    // custom filepath for relative paths
-    filename = path.normalize(options.filepath).replace(/\\/g, '/');
-  } else if (options.filename || (value && (value.name || value.path))) {
-    /*
-     * custom filename take precedence
-     * formidable and the browser add a name property
-     * fs- and request- streams have path property
-     */
-    filename = path.basename(options.filename || (value && (value.name || value.path)));
-  } else if (value && value.readable && hasOwn(value, 'httpVersion')) {
-    // or try http response
-    filename = path.basename(value.client._httpMessage.path || '');
-  }
-
-  if (filename) {
-    return 'filename="' + filename + '"';
-  }
-};
-
-FormData.prototype._getContentType = function (value, options) {
-  // use custom content-type above all
-  var contentType = options.contentType;
-
-  // or try `name` from formidable, browser
-  if (!contentType && value && value.name) {
-    contentType = mime.lookup(value.name);
-  }
-
-  // or try `path` from fs-, request- streams
-  if (!contentType && value && value.path) {
-    contentType = mime.lookup(value.path);
-  }
-
-  // or if it's http-reponse
-  if (!contentType && value && value.readable && hasOwn(value, 'httpVersion')) {
-    contentType = value.headers['content-type'];
-  }
-
-  // or guess it from the filepath or filename
-  if (!contentType && (options.filepath || options.filename)) {
-    contentType = mime.lookup(options.filepath || options.filename);
-  }
-
-  // fallback to the default content type if `value` is not simple value
-  if (!contentType && value && typeof value === 'object') {
-    contentType = FormData.DEFAULT_CONTENT_TYPE;
-  }
-
-  return contentType;
-};
-
-FormData.prototype._multiPartFooter = function () {
-  return function (next) {
-    var footer = FormData.LINE_BREAK;
-
-    var lastPart = this._streams.length === 0;
-    if (lastPart) {
-      footer += this._lastBoundary();
-    }
-
-    next(footer);
-  }.bind(this);
-};
-
-FormData.prototype._lastBoundary = function () {
-  return '--' + this.getBoundary() + '--' + FormData.LINE_BREAK;
-};
-
-FormData.prototype.getHeaders = function (userHeaders) {
-  var header;
-  var formHeaders = {
-    'content-type': 'multipart/form-data; boundary=' + this.getBoundary()
-  };
-
-  for (header in userHeaders) { // eslint-disable-line no-restricted-syntax
-    if (hasOwn(userHeaders, header)) {
-      formHeaders[header.toLowerCase()] = userHeaders[header];
-    }
-  }
-
-  return formHeaders;
-};
-
-FormData.prototype.setBoundary = function (boundary) {
-  if (typeof boundary !== 'string') {
-    throw new TypeError('FormData boundary must be a string');
-  }
-  this._boundary = boundary;
-};
-
-FormData.prototype.getBoundary = function () {
-  if (!this._boundary) {
-    this._generateBoundary();
-  }
-
-  return this._boundary;
-};
-
-FormData.prototype.getBuffer = function () {
-  var dataBuffer = new Buffer.alloc(0); // eslint-disable-line new-cap
-  var boundary = this.getBoundary();
-
-  // Create the form content. Add Line breaks to the end of data.
-  for (var i = 0, len = this._streams.length; i < len; i++) {
-    if (typeof this._streams[i] !== 'function') {
-      // Add content to the buffer.
-      if (Buffer.isBuffer(this._streams[i])) {
-        dataBuffer = Buffer.concat([dataBuffer, this._streams[i]]);
-      } else {
-        dataBuffer = Buffer.concat([dataBuffer, Buffer.from(this._streams[i])]);
-      }
-
-      // Add break after content.
-      if (typeof this._streams[i] !== 'string' || this._streams[i].substring(2, boundary.length + 2) !== boundary) {
-        dataBuffer = Buffer.concat([dataBuffer, Buffer.from(FormData.LINE_BREAK)]);
-      }
-    }
-  }
-
-  // Add the footer and return the Buffer object.
-  return Buffer.concat([dataBuffer, Buffer.from(this._lastBoundary())]);
-};
-
-FormData.prototype._generateBoundary = function () {
-  // This generates a 50 character boundary similar to those used by Firefox.
-
-  // They are optimized for boyer-moore parsing.
-  this._boundary = '--------------------------' + crypto.randomBytes(12).toString('hex');
-};
-
-// Note: getLengthSync DOESN'T calculate streams length
-// As workaround one can calculate file size manually and add it as knownLength option
-FormData.prototype.getLengthSync = function () {
-  var knownLength = this._overheadLength + this._valueLength;
-
-  // Don't get confused, there are 3 "internal" streams for each keyval pair so it basically checks if there is any value added to the form
-  if (this._streams.length) {
-    knownLength += this._lastBoundary().length;
-  }
-
-  // https://github.com/form-data/form-data/issues/40
-  if (!this.hasKnownLength()) {
-    /*
-     * Some async length retrievers are present
-     * therefore synchronous length calculation is false.
-     * Please use getLength(callback) to get proper length
-     */
-    this._error(new Error('Cannot calculate proper length in synchronous way.'));
-  }
-
-  return knownLength;
-};
-
-// Public API to check if length of added values is known
-// https://github.com/form-data/form-data/issues/196
-// https://github.com/form-data/form-data/issues/262
-FormData.prototype.hasKnownLength = function () {
-  var hasKnownLength = true;
-
-  if (this._valuesToMeasure.length) {
-    hasKnownLength = false;
-  }
-
-  return hasKnownLength;
-};
-
-FormData.prototype.getLength = function (cb) {
-  var knownLength = this._overheadLength + this._valueLength;
-
-  if (this._streams.length) {
-    knownLength += this._lastBoundary().length;
-  }
-
-  if (!this._valuesToMeasure.length) {
-    process.nextTick(cb.bind(this, null, knownLength));
-    return;
-  }
-
-  asynckit.parallel(this._valuesToMeasure, this._lengthRetriever, function (err, values) {
-    if (err) {
-      cb(err);
-      return;
-    }
-
-    values.forEach(function (length) {
-      knownLength += length;
-    });
-
-    cb(null, knownLength);
-  });
-};
-
-FormData.prototype.submit = function (params, cb) {
-  var request;
-  var options;
-  var defaults = { method: 'post' };
-
-  // parse provided url if it's string or treat it as options object
-  if (typeof params === 'string') {
-    params = parseUrl(params); // eslint-disable-line no-param-reassign
-    /* eslint sort-keys: 0 */
-    options = populate({
-      port: params.port,
-      path: params.pathname,
-      host: params.hostname,
-      protocol: params.protocol
-    }, defaults);
-  } else { // use custom params
-    options = populate(params, defaults);
-    // if no port provided use default one
-    if (!options.port) {
-      options.port = options.protocol === 'https:' ? 443 : 80;
-    }
-  }
-
-  // put that good code in getHeaders to some use
-  options.headers = this.getHeaders(params.headers);
-
-  // https if specified, fallback to http in any other case
-  if (options.protocol === 'https:') {
-    request = https.request(options);
-  } else {
-    request = http.request(options);
-  }
-
-  // get content length and fire away
-  this.getLength(function (err, length) {
-    if (err && err !== 'Unknown stream') {
-      this._error(err);
-      return;
-    }
-
-    // add content length
-    if (length) {
-      request.setHeader('Content-Length', length);
-    }
-
-    this.pipe(request);
-    if (cb) {
-      var onResponse;
-
-      var callback = function (error, responce) {
-        request.removeListener('error', callback);
-        request.removeListener('response', onResponse);
-
-        return cb.call(this, error, responce);
-      };
-
-      onResponse = callback.bind(this, null);
-
-      request.on('error', callback);
-      request.on('response', onResponse);
-    }
-  }.bind(this));
-
-  return request;
-};
-
-FormData.prototype._error = function (err) {
-  if (!this.error) {
-    this.error = err;
-    this.pause();
-    this.emit('error', err);
-  }
-};
-
-FormData.prototype.toString = function () {
-  return '[object FormData]';
-};
-setToStringTag(FormData.prototype, 'FormData');
-
-// Public API
-module.exports = FormData;
-
-
-/***/ }),
-
-/***/ 1835:
-/***/ ((module) => {
-
-"use strict";
-
-
-// populates missing values
-module.exports = function (dst, src) {
-  Object.keys(src).forEach(function (prop) {
-    dst[prop] = dst[prop] || src[prop]; // eslint-disable-line no-param-reassign
-  });
-
-  return dst;
-};
-
-
-/***/ }),
-
-/***/ 9808:
-/***/ ((module) => {
-
-"use strict";
-
-
-/* eslint no-invalid-this: 1 */
-
-var ERROR_MESSAGE = 'Function.prototype.bind called on incompatible ';
-var toStr = Object.prototype.toString;
-var max = Math.max;
-var funcType = '[object Function]';
-
-var concatty = function concatty(a, b) {
-    var arr = [];
-
-    for (var i = 0; i < a.length; i += 1) {
-        arr[i] = a[i];
-    }
-    for (var j = 0; j < b.length; j += 1) {
-        arr[j + a.length] = b[j];
-    }
-
-    return arr;
-};
-
-var slicy = function slicy(arrLike, offset) {
-    var arr = [];
-    for (var i = offset || 0, j = 0; i < arrLike.length; i += 1, j += 1) {
-        arr[j] = arrLike[i];
-    }
-    return arr;
-};
-
-var joiny = function (arr, joiner) {
-    var str = '';
-    for (var i = 0; i < arr.length; i += 1) {
-        str += arr[i];
-        if (i + 1 < arr.length) {
-            str += joiner;
-        }
-    }
-    return str;
-};
-
-module.exports = function bind(that) {
-    var target = this;
-    if (typeof target !== 'function' || toStr.apply(target) !== funcType) {
-        throw new TypeError(ERROR_MESSAGE + target);
-    }
-    var args = slicy(arguments, 1);
-
-    var bound;
-    var binder = function () {
-        if (this instanceof bound) {
-            var result = target.apply(
-                this,
-                concatty(args, arguments)
-            );
-            if (Object(result) === result) {
-                return result;
-            }
-            return this;
-        }
-        return target.apply(
-            that,
-            concatty(args, arguments)
-        );
-
-    };
-
-    var boundLength = max(0, target.length - args.length);
-    var boundArgs = [];
-    for (var i = 0; i < boundLength; i++) {
-        boundArgs[i] = '$' + i;
-    }
-
-    bound = Function('binder', 'return function (' + joiny(boundArgs, ',') + '){ return binder.apply(this,arguments); }')(binder);
-
-    if (target.prototype) {
-        var Empty = function Empty() {};
-        Empty.prototype = target.prototype;
-        bound.prototype = new Empty();
-        Empty.prototype = null;
-    }
-
-    return bound;
-};
-
-
-/***/ }),
-
-/***/ 7564:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var implementation = __nccwpck_require__(9808);
-
-module.exports = Function.prototype.bind || implementation;
-
-
-/***/ }),
-
-/***/ 470:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var undefined;
-
-var $Object = __nccwpck_require__(5399);
-
-var $Error = __nccwpck_require__(1620);
-var $EvalError = __nccwpck_require__(3056);
-var $RangeError = __nccwpck_require__(4585);
-var $ReferenceError = __nccwpck_require__(6905);
-var $SyntaxError = __nccwpck_require__(105);
-var $TypeError = __nccwpck_require__(3314);
-var $URIError = __nccwpck_require__(2578);
-
-var abs = __nccwpck_require__(5641);
-var floor = __nccwpck_require__(6171);
-var max = __nccwpck_require__(7147);
-var min = __nccwpck_require__(1017);
-var pow = __nccwpck_require__(6947);
-var round = __nccwpck_require__(2621);
-var sign = __nccwpck_require__(156);
-
-var $Function = Function;
-
-// eslint-disable-next-line consistent-return
-var getEvalledConstructor = function (expressionSyntax) {
-	try {
-		return $Function('"use strict"; return (' + expressionSyntax + ').constructor;')();
-	} catch (e) {}
-};
-
-var $gOPD = __nccwpck_require__(3170);
-var $defineProperty = __nccwpck_require__(9094);
-
-var throwTypeError = function () {
-	throw new $TypeError();
-};
-var ThrowTypeError = $gOPD
-	? (function () {
-		try {
-			// eslint-disable-next-line no-unused-expressions, no-caller, no-restricted-properties
-			arguments.callee; // IE 8 does not throw here
-			return throwTypeError;
-		} catch (calleeThrows) {
-			try {
-				// IE 8 throws on Object.getOwnPropertyDescriptor(arguments, '')
-				return $gOPD(arguments, 'callee').get;
-			} catch (gOPDthrows) {
-				return throwTypeError;
-			}
-		}
-	}())
-	: throwTypeError;
-
-var hasSymbols = __nccwpck_require__(3336)();
-
-var getProto = __nccwpck_require__(1967);
-var $ObjectGPO = __nccwpck_require__(1311);
-var $ReflectGPO = __nccwpck_require__(8681);
-
-var $apply = __nccwpck_require__(3945);
-var $call = __nccwpck_require__(8093);
-
-var needsEval = {};
-
-var TypedArray = typeof Uint8Array === 'undefined' || !getProto ? undefined : getProto(Uint8Array);
-
-var INTRINSICS = {
-	__proto__: null,
-	'%AggregateError%': typeof AggregateError === 'undefined' ? undefined : AggregateError,
-	'%Array%': Array,
-	'%ArrayBuffer%': typeof ArrayBuffer === 'undefined' ? undefined : ArrayBuffer,
-	'%ArrayIteratorPrototype%': hasSymbols && getProto ? getProto([][Symbol.iterator]()) : undefined,
-	'%AsyncFromSyncIteratorPrototype%': undefined,
-	'%AsyncFunction%': needsEval,
-	'%AsyncGenerator%': needsEval,
-	'%AsyncGeneratorFunction%': needsEval,
-	'%AsyncIteratorPrototype%': needsEval,
-	'%Atomics%': typeof Atomics === 'undefined' ? undefined : Atomics,
-	'%BigInt%': typeof BigInt === 'undefined' ? undefined : BigInt,
-	'%BigInt64Array%': typeof BigInt64Array === 'undefined' ? undefined : BigInt64Array,
-	'%BigUint64Array%': typeof BigUint64Array === 'undefined' ? undefined : BigUint64Array,
-	'%Boolean%': Boolean,
-	'%DataView%': typeof DataView === 'undefined' ? undefined : DataView,
-	'%Date%': Date,
-	'%decodeURI%': decodeURI,
-	'%decodeURIComponent%': decodeURIComponent,
-	'%encodeURI%': encodeURI,
-	'%encodeURIComponent%': encodeURIComponent,
-	'%Error%': $Error,
-	'%eval%': eval, // eslint-disable-line no-eval
-	'%EvalError%': $EvalError,
-	'%Float16Array%': typeof Float16Array === 'undefined' ? undefined : Float16Array,
-	'%Float32Array%': typeof Float32Array === 'undefined' ? undefined : Float32Array,
-	'%Float64Array%': typeof Float64Array === 'undefined' ? undefined : Float64Array,
-	'%FinalizationRegistry%': typeof FinalizationRegistry === 'undefined' ? undefined : FinalizationRegistry,
-	'%Function%': $Function,
-	'%GeneratorFunction%': needsEval,
-	'%Int8Array%': typeof Int8Array === 'undefined' ? undefined : Int8Array,
-	'%Int16Array%': typeof Int16Array === 'undefined' ? undefined : Int16Array,
-	'%Int32Array%': typeof Int32Array === 'undefined' ? undefined : Int32Array,
-	'%isFinite%': isFinite,
-	'%isNaN%': isNaN,
-	'%IteratorPrototype%': hasSymbols && getProto ? getProto(getProto([][Symbol.iterator]())) : undefined,
-	'%JSON%': typeof JSON === 'object' ? JSON : undefined,
-	'%Map%': typeof Map === 'undefined' ? undefined : Map,
-	'%MapIteratorPrototype%': typeof Map === 'undefined' || !hasSymbols || !getProto ? undefined : getProto(new Map()[Symbol.iterator]()),
-	'%Math%': Math,
-	'%Number%': Number,
-	'%Object%': $Object,
-	'%Object.getOwnPropertyDescriptor%': $gOPD,
-	'%parseFloat%': parseFloat,
-	'%parseInt%': parseInt,
-	'%Promise%': typeof Promise === 'undefined' ? undefined : Promise,
-	'%Proxy%': typeof Proxy === 'undefined' ? undefined : Proxy,
-	'%RangeError%': $RangeError,
-	'%ReferenceError%': $ReferenceError,
-	'%Reflect%': typeof Reflect === 'undefined' ? undefined : Reflect,
-	'%RegExp%': RegExp,
-	'%Set%': typeof Set === 'undefined' ? undefined : Set,
-	'%SetIteratorPrototype%': typeof Set === 'undefined' || !hasSymbols || !getProto ? undefined : getProto(new Set()[Symbol.iterator]()),
-	'%SharedArrayBuffer%': typeof SharedArrayBuffer === 'undefined' ? undefined : SharedArrayBuffer,
-	'%String%': String,
-	'%StringIteratorPrototype%': hasSymbols && getProto ? getProto(''[Symbol.iterator]()) : undefined,
-	'%Symbol%': hasSymbols ? Symbol : undefined,
-	'%SyntaxError%': $SyntaxError,
-	'%ThrowTypeError%': ThrowTypeError,
-	'%TypedArray%': TypedArray,
-	'%TypeError%': $TypeError,
-	'%Uint8Array%': typeof Uint8Array === 'undefined' ? undefined : Uint8Array,
-	'%Uint8ClampedArray%': typeof Uint8ClampedArray === 'undefined' ? undefined : Uint8ClampedArray,
-	'%Uint16Array%': typeof Uint16Array === 'undefined' ? undefined : Uint16Array,
-	'%Uint32Array%': typeof Uint32Array === 'undefined' ? undefined : Uint32Array,
-	'%URIError%': $URIError,
-	'%WeakMap%': typeof WeakMap === 'undefined' ? undefined : WeakMap,
-	'%WeakRef%': typeof WeakRef === 'undefined' ? undefined : WeakRef,
-	'%WeakSet%': typeof WeakSet === 'undefined' ? undefined : WeakSet,
-
-	'%Function.prototype.call%': $call,
-	'%Function.prototype.apply%': $apply,
-	'%Object.defineProperty%': $defineProperty,
-	'%Object.getPrototypeOf%': $ObjectGPO,
-	'%Math.abs%': abs,
-	'%Math.floor%': floor,
-	'%Math.max%': max,
-	'%Math.min%': min,
-	'%Math.pow%': pow,
-	'%Math.round%': round,
-	'%Math.sign%': sign,
-	'%Reflect.getPrototypeOf%': $ReflectGPO
-};
-
-if (getProto) {
-	try {
-		null.error; // eslint-disable-line no-unused-expressions
-	} catch (e) {
-		// https://github.com/tc39/proposal-shadowrealm/pull/384#issuecomment-1364264229
-		var errorProto = getProto(getProto(e));
-		INTRINSICS['%Error.prototype%'] = errorProto;
-	}
-}
-
-var doEval = function doEval(name) {
-	var value;
-	if (name === '%AsyncFunction%') {
-		value = getEvalledConstructor('async function () {}');
-	} else if (name === '%GeneratorFunction%') {
-		value = getEvalledConstructor('function* () {}');
-	} else if (name === '%AsyncGeneratorFunction%') {
-		value = getEvalledConstructor('async function* () {}');
-	} else if (name === '%AsyncGenerator%') {
-		var fn = doEval('%AsyncGeneratorFunction%');
-		if (fn) {
-			value = fn.prototype;
-		}
-	} else if (name === '%AsyncIteratorPrototype%') {
-		var gen = doEval('%AsyncGenerator%');
-		if (gen && getProto) {
-			value = getProto(gen.prototype);
-		}
-	}
-
-	INTRINSICS[name] = value;
-
-	return value;
-};
-
-var LEGACY_ALIASES = {
-	__proto__: null,
-	'%ArrayBufferPrototype%': ['ArrayBuffer', 'prototype'],
-	'%ArrayPrototype%': ['Array', 'prototype'],
-	'%ArrayProto_entries%': ['Array', 'prototype', 'entries'],
-	'%ArrayProto_forEach%': ['Array', 'prototype', 'forEach'],
-	'%ArrayProto_keys%': ['Array', 'prototype', 'keys'],
-	'%ArrayProto_values%': ['Array', 'prototype', 'values'],
-	'%AsyncFunctionPrototype%': ['AsyncFunction', 'prototype'],
-	'%AsyncGenerator%': ['AsyncGeneratorFunction', 'prototype'],
-	'%AsyncGeneratorPrototype%': ['AsyncGeneratorFunction', 'prototype', 'prototype'],
-	'%BooleanPrototype%': ['Boolean', 'prototype'],
-	'%DataViewPrototype%': ['DataView', 'prototype'],
-	'%DatePrototype%': ['Date', 'prototype'],
-	'%ErrorPrototype%': ['Error', 'prototype'],
-	'%EvalErrorPrototype%': ['EvalError', 'prototype'],
-	'%Float32ArrayPrototype%': ['Float32Array', 'prototype'],
-	'%Float64ArrayPrototype%': ['Float64Array', 'prototype'],
-	'%FunctionPrototype%': ['Function', 'prototype'],
-	'%Generator%': ['GeneratorFunction', 'prototype'],
-	'%GeneratorPrototype%': ['GeneratorFunction', 'prototype', 'prototype'],
-	'%Int8ArrayPrototype%': ['Int8Array', 'prototype'],
-	'%Int16ArrayPrototype%': ['Int16Array', 'prototype'],
-	'%Int32ArrayPrototype%': ['Int32Array', 'prototype'],
-	'%JSONParse%': ['JSON', 'parse'],
-	'%JSONStringify%': ['JSON', 'stringify'],
-	'%MapPrototype%': ['Map', 'prototype'],
-	'%NumberPrototype%': ['Number', 'prototype'],
-	'%ObjectPrototype%': ['Object', 'prototype'],
-	'%ObjProto_toString%': ['Object', 'prototype', 'toString'],
-	'%ObjProto_valueOf%': ['Object', 'prototype', 'valueOf'],
-	'%PromisePrototype%': ['Promise', 'prototype'],
-	'%PromiseProto_then%': ['Promise', 'prototype', 'then'],
-	'%Promise_all%': ['Promise', 'all'],
-	'%Promise_reject%': ['Promise', 'reject'],
-	'%Promise_resolve%': ['Promise', 'resolve'],
-	'%RangeErrorPrototype%': ['RangeError', 'prototype'],
-	'%ReferenceErrorPrototype%': ['ReferenceError', 'prototype'],
-	'%RegExpPrototype%': ['RegExp', 'prototype'],
-	'%SetPrototype%': ['Set', 'prototype'],
-	'%SharedArrayBufferPrototype%': ['SharedArrayBuffer', 'prototype'],
-	'%StringPrototype%': ['String', 'prototype'],
-	'%SymbolPrototype%': ['Symbol', 'prototype'],
-	'%SyntaxErrorPrototype%': ['SyntaxError', 'prototype'],
-	'%TypedArrayPrototype%': ['TypedArray', 'prototype'],
-	'%TypeErrorPrototype%': ['TypeError', 'prototype'],
-	'%Uint8ArrayPrototype%': ['Uint8Array', 'prototype'],
-	'%Uint8ClampedArrayPrototype%': ['Uint8ClampedArray', 'prototype'],
-	'%Uint16ArrayPrototype%': ['Uint16Array', 'prototype'],
-	'%Uint32ArrayPrototype%': ['Uint32Array', 'prototype'],
-	'%URIErrorPrototype%': ['URIError', 'prototype'],
-	'%WeakMapPrototype%': ['WeakMap', 'prototype'],
-	'%WeakSetPrototype%': ['WeakSet', 'prototype']
-};
-
-var bind = __nccwpck_require__(7564);
-var hasOwn = __nccwpck_require__(4076);
-var $concat = bind.call($call, Array.prototype.concat);
-var $spliceApply = bind.call($apply, Array.prototype.splice);
-var $replace = bind.call($call, String.prototype.replace);
-var $strSlice = bind.call($call, String.prototype.slice);
-var $exec = bind.call($call, RegExp.prototype.exec);
-
-/* adapted from https://github.com/lodash/lodash/blob/4.17.15/dist/lodash.js#L6735-L6744 */
-var rePropName = /[^%.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|%$))/g;
-var reEscapeChar = /\\(\\)?/g; /** Used to match backslashes in property paths. */
-var stringToPath = function stringToPath(string) {
-	var first = $strSlice(string, 0, 1);
-	var last = $strSlice(string, -1);
-	if (first === '%' && last !== '%') {
-		throw new $SyntaxError('invalid intrinsic syntax, expected closing `%`');
-	} else if (last === '%' && first !== '%') {
-		throw new $SyntaxError('invalid intrinsic syntax, expected opening `%`');
-	}
-	var result = [];
-	$replace(string, rePropName, function (match, number, quote, subString) {
-		result[result.length] = quote ? $replace(subString, reEscapeChar, '$1') : number || match;
-	});
-	return result;
-};
-/* end adaptation */
-
-var getBaseIntrinsic = function getBaseIntrinsic(name, allowMissing) {
-	var intrinsicName = name;
-	var alias;
-	if (hasOwn(LEGACY_ALIASES, intrinsicName)) {
-		alias = LEGACY_ALIASES[intrinsicName];
-		intrinsicName = '%' + alias[0] + '%';
-	}
-
-	if (hasOwn(INTRINSICS, intrinsicName)) {
-		var value = INTRINSICS[intrinsicName];
-		if (value === needsEval) {
-			value = doEval(intrinsicName);
-		}
-		if (typeof value === 'undefined' && !allowMissing) {
-			throw new $TypeError('intrinsic ' + name + ' exists, but is not available. Please file an issue!');
-		}
-
-		return {
-			alias: alias,
-			name: intrinsicName,
-			value: value
-		};
-	}
-
-	throw new $SyntaxError('intrinsic ' + name + ' does not exist!');
-};
-
-module.exports = function GetIntrinsic(name, allowMissing) {
-	if (typeof name !== 'string' || name.length === 0) {
-		throw new $TypeError('intrinsic name must be a non-empty string');
-	}
-	if (arguments.length > 1 && typeof allowMissing !== 'boolean') {
-		throw new $TypeError('"allowMissing" argument must be a boolean');
-	}
-
-	if ($exec(/^%?[^%]*%?$/, name) === null) {
-		throw new $SyntaxError('`%` may not be present anywhere but at the beginning and end of the intrinsic name');
-	}
-	var parts = stringToPath(name);
-	var intrinsicBaseName = parts.length > 0 ? parts[0] : '';
-
-	var intrinsic = getBaseIntrinsic('%' + intrinsicBaseName + '%', allowMissing);
-	var intrinsicRealName = intrinsic.name;
-	var value = intrinsic.value;
-	var skipFurtherCaching = false;
-
-	var alias = intrinsic.alias;
-	if (alias) {
-		intrinsicBaseName = alias[0];
-		$spliceApply(parts, $concat([0, 1], alias));
-	}
-
-	for (var i = 1, isOwn = true; i < parts.length; i += 1) {
-		var part = parts[i];
-		var first = $strSlice(part, 0, 1);
-		var last = $strSlice(part, -1);
-		if (
-			(
-				(first === '"' || first === "'" || first === '`')
-				|| (last === '"' || last === "'" || last === '`')
-			)
-			&& first !== last
-		) {
-			throw new $SyntaxError('property names with quotes must have matching quotes');
-		}
-		if (part === 'constructor' || !isOwn) {
-			skipFurtherCaching = true;
-		}
-
-		intrinsicBaseName += '.' + part;
-		intrinsicRealName = '%' + intrinsicBaseName + '%';
-
-		if (hasOwn(INTRINSICS, intrinsicRealName)) {
-			value = INTRINSICS[intrinsicRealName];
-		} else if (value != null) {
-			if (!(part in value)) {
-				if (!allowMissing) {
-					throw new $TypeError('base intrinsic for ' + name + ' exists, but the property is not available.');
-				}
-				return void undefined;
-			}
-			if ($gOPD && (i + 1) >= parts.length) {
-				var desc = $gOPD(value, part);
-				isOwn = !!desc;
-
-				// By convention, when a data property is converted to an accessor
-				// property to emulate a data property that does not suffer from
-				// the override mistake, that accessor's getter is marked with
-				// an `originalValue` property. Here, when we detect this, we
-				// uphold the illusion by pretending to see that original data
-				// property, i.e., returning the value rather than the getter
-				// itself.
-				if (isOwn && 'get' in desc && !('originalValue' in desc.get)) {
-					value = desc.get;
-				} else {
-					value = value[part];
-				}
-			} else {
-				isOwn = hasOwn(value, part);
-				value = value[part];
-			}
-
-			if (isOwn && !skipFurtherCaching) {
-				INTRINSICS[intrinsicRealName] = value;
-			}
-		}
-	}
-	return value;
-};
-
-
-/***/ }),
-
-/***/ 1311:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var $Object = __nccwpck_require__(5399);
-
-/** @type {import('./Object.getPrototypeOf')} */
-module.exports = $Object.getPrototypeOf || null;
-
-
-/***/ }),
-
-/***/ 8681:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./Reflect.getPrototypeOf')} */
-module.exports = (typeof Reflect !== 'undefined' && Reflect.getPrototypeOf) || null;
-
-
-/***/ }),
-
-/***/ 1967:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var reflectGetProto = __nccwpck_require__(8681);
-var originalGetProto = __nccwpck_require__(1311);
-
-var getDunderProto = __nccwpck_require__(6669);
-
-/** @type {import('.')} */
-module.exports = reflectGetProto
-	? function getProto(O) {
-		// @ts-expect-error TS can't narrow inside a closure, for some reason
-		return reflectGetProto(O);
-	}
-	: originalGetProto
-		? function getProto(O) {
-			if (!O || (typeof O !== 'object' && typeof O !== 'function')) {
-				throw new TypeError('getProto: not an object');
-			}
-			// @ts-expect-error TS can't narrow inside a closure, for some reason
-			return originalGetProto(O);
-		}
-		: getDunderProto
-			? function getProto(O) {
-				// @ts-expect-error TS can't narrow inside a closure, for some reason
-				return getDunderProto(O);
-			}
-			: null;
-
-
-/***/ }),
-
-/***/ 1174:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./gOPD')} */
-module.exports = Object.getOwnPropertyDescriptor;
-
-
-/***/ }),
-
-/***/ 3170:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-/** @type {import('.')} */
-var $gOPD = __nccwpck_require__(1174);
-
-if ($gOPD) {
-	try {
-		$gOPD([], 'length');
-	} catch (e) {
-		// IE 8 has a broken gOPD
-		$gOPD = null;
-	}
-}
-
-module.exports = $gOPD;
-
-
-/***/ }),
-
-/***/ 3336:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var origSymbol = typeof Symbol !== 'undefined' && Symbol;
-var hasSymbolSham = __nccwpck_require__(1114);
-
-/** @type {import('.')} */
-module.exports = function hasNativeSymbols() {
-	if (typeof origSymbol !== 'function') { return false; }
-	if (typeof Symbol !== 'function') { return false; }
-	if (typeof origSymbol('foo') !== 'symbol') { return false; }
-	if (typeof Symbol('bar') !== 'symbol') { return false; }
-
-	return hasSymbolSham();
-};
-
-
-/***/ }),
-
-/***/ 1114:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./shams')} */
-/* eslint complexity: [2, 18], max-statements: [2, 33] */
-module.exports = function hasSymbols() {
-	if (typeof Symbol !== 'function' || typeof Object.getOwnPropertySymbols !== 'function') { return false; }
-	if (typeof Symbol.iterator === 'symbol') { return true; }
-
-	/** @type {{ [k in symbol]?: unknown }} */
-	var obj = {};
-	var sym = Symbol('test');
-	var symObj = Object(sym);
-	if (typeof sym === 'string') { return false; }
-
-	if (Object.prototype.toString.call(sym) !== '[object Symbol]') { return false; }
-	if (Object.prototype.toString.call(symObj) !== '[object Symbol]') { return false; }
-
-	// temp disabled per https://github.com/ljharb/object.assign/issues/17
-	// if (sym instanceof Symbol) { return false; }
-	// temp disabled per https://github.com/WebReflection/get-own-property-symbols/issues/4
-	// if (!(symObj instanceof Symbol)) { return false; }
-
-	// if (typeof Symbol.prototype.toString !== 'function') { return false; }
-	// if (String(sym) !== Symbol.prototype.toString.call(sym)) { return false; }
-
-	var symVal = 42;
-	obj[sym] = symVal;
-	for (var _ in obj) { return false; } // eslint-disable-line no-restricted-syntax, no-unreachable-loop
-	if (typeof Object.keys === 'function' && Object.keys(obj).length !== 0) { return false; }
-
-	if (typeof Object.getOwnPropertyNames === 'function' && Object.getOwnPropertyNames(obj).length !== 0) { return false; }
-
-	var syms = Object.getOwnPropertySymbols(obj);
-	if (syms.length !== 1 || syms[0] !== sym) { return false; }
-
-	if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) { return false; }
-
-	if (typeof Object.getOwnPropertyDescriptor === 'function') {
-		// eslint-disable-next-line no-extra-parens
-		var descriptor = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(obj, sym));
-		if (descriptor.value !== symVal || descriptor.enumerable !== true) { return false; }
-	}
-
-	return true;
-};
-
-
-/***/ }),
-
-/***/ 5479:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var hasSymbols = __nccwpck_require__(1114);
-
-/** @type {import('.')} */
-module.exports = function hasToStringTagShams() {
-	return hasSymbols() && !!Symbol.toStringTag;
-};
-
-
-/***/ }),
-
-/***/ 4076:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var call = Function.prototype.call;
-var $hasOwn = Object.prototype.hasOwnProperty;
-var bind = __nccwpck_require__(7564);
-
-/** @type {import('.')} */
-module.exports = bind.call(call, $hasOwn);
-
-
-/***/ }),
-
-/***/ 5641:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./abs')} */
-module.exports = Math.abs;
-
-
-/***/ }),
-
-/***/ 6171:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./floor')} */
-module.exports = Math.floor;
-
-
-/***/ }),
-
-/***/ 7044:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./isNaN')} */
-module.exports = Number.isNaN || function isNaN(a) {
-	return a !== a;
-};
-
-
-/***/ }),
-
-/***/ 7147:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./max')} */
-module.exports = Math.max;
-
-
-/***/ }),
-
-/***/ 1017:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./min')} */
-module.exports = Math.min;
-
-
-/***/ }),
-
-/***/ 6947:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./pow')} */
-module.exports = Math.pow;
-
-
-/***/ }),
-
-/***/ 2621:
-/***/ ((module) => {
-
-"use strict";
-
-
-/** @type {import('./round')} */
-module.exports = Math.round;
-
-
-/***/ }),
-
-/***/ 156:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var $isNaN = __nccwpck_require__(7044);
-
-/** @type {import('./sign')} */
-module.exports = function sign(number) {
-	if ($isNaN(number) || number === 0) {
-		return number;
-	}
-	return number < 0 ? -1 : +1;
-};
-
-
-/***/ }),
-
-/***/ 9829:
-/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
-
-/*!
- * mime-db
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2015-2022 Douglas Christopher Wilson
- * MIT Licensed
- */
-
-/**
- * Module exports.
- */
-
-module.exports = __nccwpck_require__(1813)
-
-
-/***/ }),
-
-/***/ 4096:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-/*!
- * mime-types
- * Copyright(c) 2014 Jonathan Ong
- * Copyright(c) 2015 Douglas Christopher Wilson
- * MIT Licensed
- */
-
-
-
-/**
- * Module dependencies.
- * @private
- */
-
-var db = __nccwpck_require__(9829)
-var extname = (__nccwpck_require__(6928).extname)
-
-/**
- * Module variables.
- * @private
- */
-
-var EXTRACT_TYPE_REGEXP = /^\s*([^;\s]*)(?:;|\s|$)/
-var TEXT_TYPE_REGEXP = /^text\//i
-
-/**
- * Module exports.
- * @public
- */
-
-exports.charset = charset
-exports.charsets = { lookup: charset }
-exports.contentType = contentType
-exports.extension = extension
-exports.extensions = Object.create(null)
-exports.lookup = lookup
-exports.types = Object.create(null)
-
-// Populate the extensions/types maps
-populateMaps(exports.extensions, exports.types)
-
-/**
- * Get the default charset for a MIME type.
- *
- * @param {string} type
- * @return {boolean|string}
- */
-
-function charset (type) {
-  if (!type || typeof type !== 'string') {
-    return false
-  }
-
-  // TODO: use media-typer
-  var match = EXTRACT_TYPE_REGEXP.exec(type)
-  var mime = match && db[match[1].toLowerCase()]
-
-  if (mime && mime.charset) {
-    return mime.charset
-  }
-
-  // default text/* to utf-8
-  if (match && TEXT_TYPE_REGEXP.test(match[1])) {
-    return 'UTF-8'
-  }
-
-  return false
-}
-
-/**
- * Create a full Content-Type header given a MIME type or extension.
- *
- * @param {string} str
- * @return {boolean|string}
- */
-
-function contentType (str) {
-  // TODO: should this even be in this module?
-  if (!str || typeof str !== 'string') {
-    return false
-  }
-
-  var mime = str.indexOf('/') === -1
-    ? exports.lookup(str)
-    : str
-
-  if (!mime) {
-    return false
-  }
-
-  // TODO: use content-type or other module
-  if (mime.indexOf('charset') === -1) {
-    var charset = exports.charset(mime)
-    if (charset) mime += '; charset=' + charset.toLowerCase()
-  }
-
-  return mime
-}
-
-/**
- * Get the default extension for a MIME type.
- *
- * @param {string} type
- * @return {boolean|string}
- */
-
-function extension (type) {
-  if (!type || typeof type !== 'string') {
-    return false
-  }
-
-  // TODO: use media-typer
-  var match = EXTRACT_TYPE_REGEXP.exec(type)
-
-  // get extensions
-  var exts = match && exports.extensions[match[1].toLowerCase()]
-
-  if (!exts || !exts.length) {
-    return false
-  }
-
-  return exts[0]
-}
-
-/**
- * Lookup the MIME type for a file path/extension.
- *
- * @param {string} path
- * @return {boolean|string}
- */
-
-function lookup (path) {
-  if (!path || typeof path !== 'string') {
-    return false
-  }
-
-  // get the extension ("ext" or ".ext" or full path)
-  var extension = extname('x.' + path)
-    .toLowerCase()
-    .substr(1)
-
-  if (!extension) {
-    return false
-  }
-
-  return exports.types[extension] || false
-}
-
-/**
- * Populate the extensions and types maps.
- * @private
- */
-
-function populateMaps (extensions, types) {
-  // source preference (least -> most)
-  var preference = ['nginx', 'apache', undefined, 'iana']
-
-  Object.keys(db).forEach(function forEachMimeType (type) {
-    var mime = db[type]
-    var exts = mime.extensions
-
-    if (!exts || !exts.length) {
-      return
-    }
-
-    // mime -> extensions
-    extensions[type] = exts
-
-    // extension -> mime
-    for (var i = 0; i < exts.length; i++) {
-      var extension = exts[i]
-
-      if (types[extension]) {
-        var from = preference.indexOf(db[types[extension]].source)
-        var to = preference.indexOf(mime.source)
-
-        if (types[extension] !== 'application/octet-stream' &&
-          (from > to || (from === to && types[extension].substr(0, 12) === 'application/'))) {
-          // skip the remapping
-          continue
-        }
-      }
-
-      // set the extension -> mime
-      types[extension] = type
-    }
-  })
-}
-
-
-/***/ }),
-
-/***/ 7777:
-/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
-
-"use strict";
-
-
-var parseUrl = (__nccwpck_require__(7016).parse);
-
-var DEFAULT_PORTS = {
-  ftp: 21,
-  gopher: 70,
-  http: 80,
-  https: 443,
-  ws: 80,
-  wss: 443,
-};
-
-var stringEndsWith = String.prototype.endsWith || function(s) {
-  return s.length <= this.length &&
-    this.indexOf(s, this.length - s.length) !== -1;
-};
-
-/**
- * @param {string|object} url - The URL, or the result from url.parse.
- * @return {string} The URL of the proxy that should handle the request to the
- *  given URL. If no proxy is set, this will be an empty string.
- */
-function getProxyForUrl(url) {
-  var parsedUrl = typeof url === 'string' ? parseUrl(url) : url || {};
-  var proto = parsedUrl.protocol;
-  var hostname = parsedUrl.host;
-  var port = parsedUrl.port;
-  if (typeof hostname !== 'string' || !hostname || typeof proto !== 'string') {
-    return '';  // Don't proxy URLs without a valid scheme or host.
-  }
-
-  proto = proto.split(':', 1)[0];
-  // Stripping ports in this way instead of using parsedUrl.hostname to make
-  // sure that the brackets around IPv6 addresses are kept.
-  hostname = hostname.replace(/:\d*$/, '');
-  port = parseInt(port) || DEFAULT_PORTS[proto] || 0;
-  if (!shouldProxy(hostname, port)) {
-    return '';  // Don't proxy URLs that match NO_PROXY.
-  }
-
-  var proxy =
-    getEnv('npm_config_' + proto + '_proxy') ||
-    getEnv(proto + '_proxy') ||
-    getEnv('npm_config_proxy') ||
-    getEnv('all_proxy');
-  if (proxy && proxy.indexOf('://') === -1) {
-    // Missing scheme in proxy, default to the requested URL's scheme.
-    proxy = proto + '://' + proxy;
-  }
-  return proxy;
-}
-
-/**
- * Determines whether a given URL should be proxied.
- *
- * @param {string} hostname - The host name of the URL.
- * @param {number} port - The effective port of the URL.
- * @returns {boolean} Whether the given URL should be proxied.
- * @private
- */
-function shouldProxy(hostname, port) {
-  var NO_PROXY =
-    (getEnv('npm_config_no_proxy') || getEnv('no_proxy')).toLowerCase();
-  if (!NO_PROXY) {
-    return true;  // Always proxy if NO_PROXY is not set.
-  }
-  if (NO_PROXY === '*') {
-    return false;  // Never proxy if wildcard is set.
-  }
-
-  return NO_PROXY.split(/[,\s]/).every(function(proxy) {
-    if (!proxy) {
-      return true;  // Skip zero-length hosts.
-    }
-    var parsedProxy = proxy.match(/^(.+):(\d+)$/);
-    var parsedProxyHostname = parsedProxy ? parsedProxy[1] : proxy;
-    var parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
-    if (parsedProxyPort && parsedProxyPort !== port) {
-      return true;  // Skip if ports don't match.
-    }
-
-    if (!/^[.*]/.test(parsedProxyHostname)) {
-      // No wildcards, so stop proxying if there is an exact match.
-      return hostname !== parsedProxyHostname;
-    }
-
-    if (parsedProxyHostname.charAt(0) === '*') {
-      // Remove leading wildcard.
-      parsedProxyHostname = parsedProxyHostname.slice(1);
-    }
-    // Stop proxying if the hostname ends with the no_proxy host.
-    return !stringEndsWith.call(hostname, parsedProxyHostname);
-  });
-}
-
-/**
- * Get the value for an environment variable.
- *
- * @param {string} key - The name of the environment variable.
- * @return {string} The value of the environment variable.
- * @private
- */
-function getEnv(key) {
-  return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || '';
-}
-
-exports.getProxyForUrl = getProxyForUrl;
-
-
-/***/ }),
-
-/***/ 4534:
+/***/ 6111:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -6617,7 +3206,7 @@ exports.getProxyForUrl = getProxyForUrl;
  * QuantCDN API
  * Unified API for QuantCDN Admin and QuantCloud Platform services
  *
- * The version of the OpenAPI document: 4.8.0
+ * The version of the OpenAPI document: 4.12.0
  *
  *
  * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
@@ -6634,16 +3223,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.AIModelsApiFp = exports.AIModelsApiAxiosParamCreator = exports.AIInferenceApi = exports.AIInferenceApiFactory = exports.AIInferenceApiFp = exports.AIInferenceApiAxiosParamCreator = exports.AICustomToolsApi = exports.AICustomToolsApiFactory = exports.AICustomToolsApiFp = exports.AICustomToolsApiAxiosParamCreator = exports.AIAgentsApi = exports.AIAgentsApiFactory = exports.AIAgentsApiFp = exports.AIAgentsApiAxiosParamCreator = exports.WafConfigThresholdsInnerModeEnum = exports.WafConfigThresholdsInnerTypeEnum = exports.WafConfigModeEnum = exports.V2RuleProxyActionNotifyEnum = exports.V1TransitionStateEnum = exports.UpdateAISessionRequestNewMessagesInnerRoleEnum = exports.UpdateAISessionRequestStatusEnum = exports.SpotConfigurationStrategyEnum = exports.ScalingPolicyMetricEnum = exports.PatchEnvironmentComposeRequestSpotConfigurationStrategyEnum = exports.ImageGenerationRequestTextToImageParamsControlModeEnum = exports.ImageGenerationRequestTextToImageParamsStyleEnum = exports.ImageGenerationRequestOutPaintingParamsOutPaintingModeEnum = exports.ImageGenerationRequestImageGenerationConfigQualityEnum = exports.ImageGenerationRequestRegionEnum = exports.ImageGenerationRequestTaskTypeEnum = exports.EnvironmentSummaryDeploymentStatusEnum = exports.EnvironmentResponseDeploymentStatusEnum = exports.EmbeddingsRequestDimensionsEnum = exports.CronRunStatusEnum = exports.CronRunRunTypeEnum = exports.CreateApplicationRequestDatabaseEngineEnum = exports.CreateAISessionRequestInitialMessagesInnerRoleEnum = exports.CreateAISession201ResponseStatusEnum = exports.ContainerImageReferenceTypeEnum = exports.ContainerDependsOnInnerConditionEnum = exports.ChatInferenceStreamRequestMessagesInnerRoleEnum = exports.ChatInferenceRequestResponseFormatTypeEnum = exports.ChatInferenceRequestMessagesInnerContentOneOfInnerOneOf3DocumentFormatEnum = exports.ChatInferenceRequestMessagesInnerContentOneOfInnerOneOf2VideoFormatEnum = exports.ChatInferenceRequestMessagesInnerContentOneOfInnerOneOf1ImageFormatEnum = exports.ChatInferenceRequestMessagesInnerRoleEnum = exports.ChatInference200ResponseResponseRoleEnum = exports.ChatInference200ResponseFinishReasonEnum = exports.ApplicationImageReferenceTypeEnum = exports.ApplicationDatabaseRdsInstanceEngineEnum = void 0;
-exports.CrawlerSchedulesApi = exports.CrawlerSchedulesApiFactory = exports.CrawlerSchedulesApiFp = exports.CrawlerSchedulesApiAxiosParamCreator = exports.ContainersApi = exports.ContainersApiFactory = exports.ContainersApiFp = exports.ContainersApiAxiosParamCreator = exports.ComposeApi = exports.ComposeApiFactory = exports.ComposeApiFp = exports.ComposeApiAxiosParamCreator = exports.CommandsApi = exports.CommandsApiFactory = exports.CommandsApiFp = exports.CommandsApiAxiosParamCreator = exports.ListBackupsStatusEnum = exports.ListBackupsOrderEnum = exports.ListBackupsTypeEnum = exports.DownloadBackupTypeEnum = exports.DeleteBackupTypeEnum = exports.CreateBackupTypeEnum = exports.BackupManagementApi = exports.BackupManagementApiFactory = exports.BackupManagementApiFp = exports.BackupManagementApiAxiosParamCreator = exports.ApplicationsApi = exports.ApplicationsApiFactory = exports.ApplicationsApiFp = exports.ApplicationsApiAxiosParamCreator = exports.AIVectorDatabaseApi = exports.AIVectorDatabaseApiFactory = exports.AIVectorDatabaseApiFp = exports.AIVectorDatabaseApiAxiosParamCreator = exports.ListAIToolExecutionsStatusEnum = exports.AIToolsApi = exports.AIToolsApiFactory = exports.AIToolsApiFp = exports.AIToolsApiAxiosParamCreator = exports.AISessionsApi = exports.AISessionsApiFactory = exports.AISessionsApiFp = exports.AISessionsApiAxiosParamCreator = exports.AIMonitoringApi = exports.AIMonitoringApiFactory = exports.AIMonitoringApiFp = exports.AIMonitoringApiAxiosParamCreator = exports.ListAIModelsFeatureEnum = exports.AIModelsApi = exports.AIModelsApiFactory = void 0;
+exports.UpdateAISessionRequestNewMessagesInnerRoleEnum = exports.UpdateAISessionRequestStatusEnum = exports.SpotConfigurationStrategyEnum = exports.ScalingPolicyMetricEnum = exports.QueryVectorCollectionRequestSortOrderEnum = exports.QueryVectorCollectionRequestSortByEnum = exports.QueryVectorCollection200ResponsePaginationSortOrderEnum = exports.QueryVectorCollection200ResponsePaginationSortByEnum = exports.QueryVectorCollection200ResponseSearchModeEnum = exports.PatchEnvironmentComposeRequestSpotConfigurationStrategyEnum = exports.ListTasks200ResponseTasksInnerStatusEnum = exports.ListOrchestrationBatches200ResponseBatchesInnerStatusEnum = exports.ImportSkillRequestSourceTypeEnum = exports.ImportSkillCollectionRequestSourceTypeEnum = exports.ImageGenerationRequestTextToImageParamsControlModeEnum = exports.ImageGenerationRequestTextToImageParamsStyleEnum = exports.ImageGenerationRequestOutPaintingParamsOutPaintingModeEnum = exports.ImageGenerationRequestImageGenerationConfigQualityEnum = exports.ImageGenerationRequestRegionEnum = exports.ImageGenerationRequestTaskTypeEnum = exports.GetTask200ResponseStatusEnum = exports.GetDurableExecutionStatus200ResponseStatusEnum = exports.GetAIOrchestrationStatus200ResponseToolsInnerStatusEnum = exports.GetAIOrchestrationStatus200ResponseStatusEnum = exports.EnvironmentSummaryDeploymentStatusEnum = exports.EnvironmentResponseDeploymentStatusEnum = exports.EmbeddingsRequestDimensionsEnum = exports.CronRunStatusEnum = exports.CronRunRunTypeEnum = exports.CreateTaskRequestStatusEnum = exports.CreateOrchestrationRequestStopConditionTypeEnum = exports.CreateOrchestrationRequestInputSourceTypeEnum = exports.CreateApplicationRequestDatabaseEngineEnum = exports.CreateAISessionRequestInitialMessagesInnerRoleEnum = exports.CreateAISession201ResponseStatusEnum = exports.ContainerImageReferenceTypeEnum = exports.ContainerDependsOnInnerConditionEnum = exports.ChatWithAIAgent202ResponseStatusEnum = exports.ChatInferenceStreamRequestMessagesInnerRoleEnum = exports.ChatInferenceRequestResponseFormatTypeEnum = exports.ChatInferenceRequestMessagesInnerContentOneOfInnerOneOf3DocumentFormatEnum = exports.ChatInferenceRequestMessagesInnerContentOneOfInnerOneOf2VideoFormatEnum = exports.ChatInferenceRequestMessagesInnerContentOneOfInnerOneOf1ImageFormatEnum = exports.ChatInferenceRequestMessagesInnerRoleEnum = exports.ChatInferenceRequestGuardrailsTraceEnum = exports.ChatInference202ResponseStatusEnum = exports.ChatInference200ResponseResponseRoleEnum = exports.ChatInference200ResponseFinishReasonEnum = exports.ApplicationImageReferenceTypeEnum = exports.ApplicationDatabaseRdsInstanceEngineEnum = void 0;
+exports.AITaskManagementApi = exports.AITaskManagementApiFactory = exports.AITaskManagementApiFp = exports.AITaskManagementApiAxiosParamCreator = exports.AISkillsApi = exports.AISkillsApiFactory = exports.AISkillsApiFp = exports.AISkillsApiAxiosParamCreator = exports.AISessionsApi = exports.AISessionsApiFactory = exports.AISessionsApiFp = exports.AISessionsApiAxiosParamCreator = exports.ListOrchestrationsStatusEnum = exports.AIOrchestrationsApi = exports.AIOrchestrationsApiFactory = exports.AIOrchestrationsApiFp = exports.AIOrchestrationsApiAxiosParamCreator = exports.AIMonitoringApi = exports.AIMonitoringApiFactory = exports.AIMonitoringApiFp = exports.AIMonitoringApiAxiosParamCreator = exports.ListAIModelsFeatureEnum = exports.AIModelsApi = exports.AIModelsApiFactory = exports.AIModelsApiFp = exports.AIModelsApiAxiosParamCreator = exports.AIInferenceApi = exports.AIInferenceApiFactory = exports.AIInferenceApiFp = exports.AIInferenceApiAxiosParamCreator = exports.AIFileStorageApi = exports.AIFileStorageApiFactory = exports.AIFileStorageApiFp = exports.AIFileStorageApiAxiosParamCreator = exports.AICustomToolsApi = exports.AICustomToolsApiFactory = exports.AICustomToolsApiFp = exports.AICustomToolsApiAxiosParamCreator = exports.AIAgentsApi = exports.AIAgentsApiFactory = exports.AIAgentsApiFp = exports.AIAgentsApiAxiosParamCreator = exports.WafConfigThresholdsInnerModeEnum = exports.WafConfigThresholdsInnerTypeEnum = exports.WafConfigModeEnum = exports.V2RuleProxyActionNotifyEnum = exports.V2MetricsMetaGranularityEnum = exports.V2MetricsMetaPeriodEnum = exports.V1TransitionStateEnum = exports.UpdateTaskRequestStatusEnum = void 0;
+exports.CrawlerSchedulesApi = exports.CrawlerSchedulesApiFactory = exports.CrawlerSchedulesApiFp = exports.CrawlerSchedulesApiAxiosParamCreator = exports.ContainersApi = exports.ContainersApiFactory = exports.ContainersApiFp = exports.ContainersApiAxiosParamCreator = exports.ComposeApi = exports.ComposeApiFactory = exports.ComposeApiFp = exports.ComposeApiAxiosParamCreator = exports.CommandsApi = exports.CommandsApiFactory = exports.CommandsApiFp = exports.CommandsApiAxiosParamCreator = exports.GetMonthlyMetricsTimestampFormatEnum = exports.GetMonthlyMetricsMetricsEnum = exports.GetHourlyMetricsTimestampFormatEnum = exports.GetHourlyMetricsMetricsEnum = exports.GetDailyMetricsTimestampFormatEnum = exports.GetDailyMetricsMetricsEnum = exports.CDNMetricsApi = exports.CDNMetricsApiFactory = exports.CDNMetricsApiFp = exports.CDNMetricsApiAxiosParamCreator = exports.ListBackupsStatusEnum = exports.ListBackupsOrderEnum = exports.ListBackupsTypeEnum = exports.DownloadBackupTypeEnum = exports.DeleteBackupTypeEnum = exports.CreateBackupTypeEnum = exports.BackupManagementApi = exports.BackupManagementApiFactory = exports.BackupManagementApiFp = exports.BackupManagementApiAxiosParamCreator = exports.ApplicationsApi = exports.ApplicationsApiFactory = exports.ApplicationsApiFp = exports.ApplicationsApiAxiosParamCreator = exports.AIVectorDatabaseApi = exports.AIVectorDatabaseApiFactory = exports.AIVectorDatabaseApiFp = exports.AIVectorDatabaseApiAxiosParamCreator = exports.ListAIToolExecutionsStatusEnum = exports.AIToolsApi = exports.AIToolsApiFactory = exports.AIToolsApiFp = exports.AIToolsApiAxiosParamCreator = exports.ListTasksStatusEnum = void 0;
 exports.ScalingPolicyApi = exports.ScalingPolicyApiFactory = exports.ScalingPolicyApiFp = exports.ScalingPolicyApiAxiosParamCreator = exports.SSHAccessApi = exports.SSHAccessApiFactory = exports.SSHAccessApiFp = exports.SSHAccessApiAxiosParamCreator = exports.RulesApi = exports.RulesApiFactory = exports.RulesApiFp = exports.RulesApiAxiosParamCreator = exports.PurgeApi = exports.PurgeApiFactory = exports.PurgeApiFp = exports.PurgeApiAxiosParamCreator = exports.ProjectsApi = exports.ProjectsApiFactory = exports.ProjectsApiFp = exports.ProjectsApiAxiosParamCreator = exports.OrganizationsApi = exports.OrganizationsApiFactory = exports.OrganizationsApiFp = exports.OrganizationsApiAxiosParamCreator = exports.KVApi = exports.KVApiFactory = exports.KVApiFp = exports.KVApiAxiosParamCreator = exports.HeadersApi = exports.HeadersApiFactory = exports.HeadersApiFp = exports.HeadersApiAxiosParamCreator = exports.SyncToEnvironmentTypeEnum = exports.ListSyncOperationsTypeEnum = exports.EnvironmentsApi = exports.EnvironmentsApiFactory = exports.EnvironmentsApiFp = exports.EnvironmentsApiAxiosParamCreator = exports.DomainsApi = exports.DomainsApiFactory = exports.DomainsApiFp = exports.DomainsApiAxiosParamCreator = exports.CronApi = exports.CronApiFactory = exports.CronApiFp = exports.CronApiAxiosParamCreator = exports.CrawlersApi = exports.CrawlersApiFactory = exports.CrawlersApiFp = exports.CrawlersApiAxiosParamCreator = void 0;
-exports.VolumesApi = exports.VolumesApiFactory = exports.VolumesApiFp = exports.VolumesApiAxiosParamCreator = exports.VariablesApi = exports.VariablesApiFactory = exports.VariablesApiFp = exports.VariablesApiAxiosParamCreator = void 0;
+exports.VolumesApi = exports.VolumesApiFactory = exports.VolumesApiFp = exports.VolumesApiAxiosParamCreator = exports.VariablesApi = exports.VariablesApiFactory = exports.VariablesApiFp = exports.VariablesApiAxiosParamCreator = exports.TokensApi = exports.TokensApiFactory = exports.TokensApiFp = exports.TokensApiAxiosParamCreator = void 0;
 const axios_1 = __nccwpck_require__(7269);
 // Some imports not used depending on template conditions
 // @ts-ignore
-const common_1 = __nccwpck_require__(9873);
+const common_1 = __nccwpck_require__(7186);
 // @ts-ignore
-const base_1 = __nccwpck_require__(1077);
+const base_1 = __nccwpck_require__(8358);
 exports.ApplicationDatabaseRdsInstanceEngineEnum = {
     Mysql: 'mysql',
     Postgres: 'postgres'
@@ -6660,6 +3250,13 @@ exports.ChatInference200ResponseFinishReasonEnum = {
 };
 exports.ChatInference200ResponseResponseRoleEnum = {
     Assistant: 'assistant'
+};
+exports.ChatInference202ResponseStatusEnum = {
+    Queued: 'queued'
+};
+exports.ChatInferenceRequestGuardrailsTraceEnum = {
+    Enabled: 'enabled',
+    Disabled: 'disabled'
 };
 exports.ChatInferenceRequestMessagesInnerRoleEnum = {
     User: 'user',
@@ -6692,6 +3289,9 @@ exports.ChatInferenceStreamRequestMessagesInnerRoleEnum = {
     Assistant: 'assistant',
     System: 'system'
 };
+exports.ChatWithAIAgent202ResponseStatusEnum = {
+    Queued: 'queued'
+};
 exports.ContainerDependsOnInnerConditionEnum = {
     Start: 'START',
     Healthy: 'HEALTHY',
@@ -6713,6 +3313,25 @@ exports.CreateAISessionRequestInitialMessagesInnerRoleEnum = {
 exports.CreateApplicationRequestDatabaseEngineEnum = {
     Mysql: 'mysql',
     Postgres: 'postgres'
+};
+exports.CreateOrchestrationRequestInputSourceTypeEnum = {
+    Static: 'static',
+    TaskQuery: 'task_query',
+    Generator: 'generator'
+};
+exports.CreateOrchestrationRequestStopConditionTypeEnum = {
+    AllComplete: 'all_complete',
+    MaxIterations: 'max_iterations',
+    Condition: 'condition',
+    Manual: 'manual'
+};
+exports.CreateTaskRequestStatusEnum = {
+    Pending: 'pending',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+    Blocked: 'blocked'
 };
 exports.CronRunRunTypeEnum = {
     Exec: 'EXEC',
@@ -6741,6 +3360,34 @@ exports.EnvironmentSummaryDeploymentStatusEnum = {
     Completed: 'COMPLETED',
     InProgress: 'IN_PROGRESS',
     Failed: 'FAILED'
+};
+exports.GetAIOrchestrationStatus200ResponseStatusEnum = {
+    Pending: 'pending',
+    Polling: 'polling',
+    Synthesizing: 'synthesizing',
+    Complete: 'complete',
+    Failed: 'failed'
+};
+exports.GetAIOrchestrationStatus200ResponseToolsInnerStatusEnum = {
+    Pending: 'pending',
+    Running: 'running',
+    Complete: 'complete',
+    Failed: 'failed'
+};
+exports.GetDurableExecutionStatus200ResponseStatusEnum = {
+    Pending: 'pending',
+    Running: 'running',
+    WaitingCallback: 'waiting_callback',
+    Complete: 'complete',
+    Failed: 'failed'
+};
+exports.GetTask200ResponseStatusEnum = {
+    Pending: 'pending',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+    Blocked: 'blocked'
 };
 exports.ImageGenerationRequestTaskTypeEnum = {
     TextImage: 'TEXT_IMAGE',
@@ -6778,11 +3425,53 @@ exports.ImageGenerationRequestTextToImageParamsControlModeEnum = {
     CannyEdge: 'CANNY_EDGE',
     Segmentation: 'SEGMENTATION'
 };
+exports.ImportSkillCollectionRequestSourceTypeEnum = {
+    Github: 'github'
+};
+exports.ImportSkillRequestSourceTypeEnum = {
+    SkillsSh: 'skills.sh',
+    Github: 'github'
+};
+exports.ListOrchestrationBatches200ResponseBatchesInnerStatusEnum = {
+    Pending: 'pending',
+    Running: 'running',
+    Completed: 'completed',
+    Failed: 'failed'
+};
+exports.ListTasks200ResponseTasksInnerStatusEnum = {
+    Pending: 'pending',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+    Blocked: 'blocked'
+};
 exports.PatchEnvironmentComposeRequestSpotConfigurationStrategyEnum = {
     Off: 'off',
     SpotOnly: 'spot-only',
     MixedSafe: 'mixed-safe',
     MixedAggressive: 'mixed-aggressive'
+};
+exports.QueryVectorCollection200ResponseSearchModeEnum = {
+    Text: 'text',
+    Vector: 'vector',
+    Metadata: 'metadata'
+};
+exports.QueryVectorCollection200ResponsePaginationSortByEnum = {
+    CreatedAt: 'created_at',
+    DocumentId: 'document_id'
+};
+exports.QueryVectorCollection200ResponsePaginationSortOrderEnum = {
+    Asc: 'asc',
+    Desc: 'desc'
+};
+exports.QueryVectorCollectionRequestSortByEnum = {
+    CreatedAt: 'created_at',
+    DocumentId: 'document_id'
+};
+exports.QueryVectorCollectionRequestSortOrderEnum = {
+    Asc: 'asc',
+    Desc: 'desc'
 };
 exports.ScalingPolicyMetricEnum = {
     CpuUtilization: 'CPUUtilization',
@@ -6803,9 +3492,27 @@ exports.UpdateAISessionRequestNewMessagesInnerRoleEnum = {
     User: 'user',
     Assistant: 'assistant'
 };
+exports.UpdateTaskRequestStatusEnum = {
+    Pending: 'pending',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+    Blocked: 'blocked'
+};
 exports.V1TransitionStateEnum = {
     Published: 'published',
     Unpublished: 'unpublished'
+};
+exports.V2MetricsMetaPeriodEnum = {
+    Hourly: 'hourly',
+    Daily: 'daily',
+    Monthly: 'monthly'
+};
+exports.V2MetricsMetaGranularityEnum = {
+    Minute: 'minute',
+    Day: 'day',
+    Month: 'month'
 };
 exports.V2RuleProxyActionNotifyEnum = {
     None: 'none',
@@ -6832,7 +3539,7 @@ exports.WafConfigThresholdsInnerModeEnum = {
 const AIAgentsApiAxiosParamCreator = function (configuration) {
     return {
         /**
-         * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed (no client confirmation)      * - Temperature and model from agent config      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Use `/sessions/{sessionId}` to retrieve full conversation history
+         * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed on cloud (no client confirmation needed)      * - Temperature and model from agent config      * - Supports sync, streaming, and async modes      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion      * - **Streaming Mode**: Set `stream: true` for SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running agent tasks      * - All tools are auto-executed on cloud (no `waiting_callback` state)      * - Poll `/ai/chat/executions/{requestId}` for status      * - Ideal for agents with slow tools (image generation, web search, etc.)      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Sessions work in all modes (sync, streaming, async)      * - Use `/sessions/{sessionId}` to retrieve full conversation history
          * @summary Chat with AI Agent
          * @param {string} organisation The organisation ID
          * @param {string} agentId The agent ID
@@ -7069,7 +3776,7 @@ const AIAgentsApiFp = function (configuration) {
     const localVarAxiosParamCreator = (0, exports.AIAgentsApiAxiosParamCreator)(configuration);
     return {
         /**
-         * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed (no client confirmation)      * - Temperature and model from agent config      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Use `/sessions/{sessionId}` to retrieve full conversation history
+         * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed on cloud (no client confirmation needed)      * - Temperature and model from agent config      * - Supports sync, streaming, and async modes      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion      * - **Streaming Mode**: Set `stream: true` for SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running agent tasks      * - All tools are auto-executed on cloud (no `waiting_callback` state)      * - Poll `/ai/chat/executions/{requestId}` for status      * - Ideal for agents with slow tools (image generation, web search, etc.)      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Sessions work in all modes (sync, streaming, async)      * - Use `/sessions/{sessionId}` to retrieve full conversation history
          * @summary Chat with AI Agent
          * @param {string} organisation The organisation ID
          * @param {string} agentId The agent ID
@@ -7183,7 +3890,7 @@ const AIAgentsApiFactory = function (configuration, basePath, axios) {
     const localVarFp = (0, exports.AIAgentsApiFp)(configuration);
     return {
         /**
-         * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed (no client confirmation)      * - Temperature and model from agent config      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Use `/sessions/{sessionId}` to retrieve full conversation history
+         * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed on cloud (no client confirmation needed)      * - Temperature and model from agent config      * - Supports sync, streaming, and async modes      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion      * - **Streaming Mode**: Set `stream: true` for SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running agent tasks      * - All tools are auto-executed on cloud (no `waiting_callback` state)      * - Poll `/ai/chat/executions/{requestId}` for status      * - Ideal for agents with slow tools (image generation, web search, etc.)      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Sessions work in all modes (sync, streaming, async)      * - Use `/sessions/{sessionId}` to retrieve full conversation history
          * @summary Chat with AI Agent
          * @param {string} organisation The organisation ID
          * @param {string} agentId The agent ID
@@ -7261,7 +3968,7 @@ exports.AIAgentsApiFactory = AIAgentsApiFactory;
  */
 class AIAgentsApi extends base_1.BaseAPI {
     /**
-     * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed (no client confirmation)      * - Temperature and model from agent config      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Use `/sessions/{sessionId}` to retrieve full conversation history
+     * Initiates a chat session with a specific AI agent. The agent\'s configuration (system prompt, temperature, model, allowed tools) is automatically applied.      *      * **Key Features:**      * - **Session Management**: Automatic session creation and state tracking      * - **Multi-turn Conversations**: Full conversation history maintained server-side      * - Agent\'s system prompt is prepended to conversation      * - Only agent\'s allowed tools are available      * - All tools are auto-executed on cloud (no client confirmation needed)      * - Temperature and model from agent config      * - Supports sync, streaming, and async modes      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion      * - **Streaming Mode**: Set `stream: true` for SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running agent tasks      * - All tools are auto-executed on cloud (no `waiting_callback` state)      * - Poll `/ai/chat/executions/{requestId}` for status      * - Ideal for agents with slow tools (image generation, web search, etc.)      *      * **Session Support:**      * - Omit `sessionId` to create a new session automatically      * - Include `sessionId` to continue an existing conversation      * - Sessions expire after 60 minutes of inactivity      * - Sessions work in all modes (sync, streaming, async)      * - Use `/sessions/{sessionId}` to retrieve full conversation history
      * @summary Chat with AI Agent
      * @param {string} organisation The organisation ID
      * @param {string} agentId The agent ID
@@ -7597,13 +4304,370 @@ class AICustomToolsApi extends base_1.BaseAPI {
 }
 exports.AICustomToolsApi = AICustomToolsApi;
 /**
+ * AIFileStorageApi - axios parameter creator
+ * @export
+ */
+const AIFileStorageApiAxiosParamCreator = function (configuration) {
+    return {
+        /**
+         * Deletes a file from S3 storage.
+         * @summary Delete File
+         * @param {string} organisation The organisation ID
+         * @param {string} fileId The file ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteFile: (organisation_1, fileId_1, ...args_1) => __awaiter(this, [organisation_1, fileId_1, ...args_1], void 0, function* (organisation, fileId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('deleteFile', 'organisation', organisation);
+            // verify required parameter 'fileId' is not null or undefined
+            (0, common_1.assertParamExists)('deleteFile', 'fileId', fileId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/files/{fileId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"fileId"}}`, encodeURIComponent(String(fileId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Retrieves file metadata and a presigned download URL (valid for 1 hour).
+         * @summary Get File
+         * @param {string} organisation The organisation ID
+         * @param {string} fileId The file ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getFile: (organisation_1, fileId_1, ...args_1) => __awaiter(this, [organisation_1, fileId_1, ...args_1], void 0, function* (organisation, fileId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getFile', 'organisation', organisation);
+            // verify required parameter 'fileId' is not null or undefined
+            (0, common_1.assertParamExists)('getFile', 'fileId', fileId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/files/{fileId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"fileId"}}`, encodeURIComponent(String(fileId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Lists files stored in S3 for this organization with optional metadata filtering and pagination.
+         * @summary List Files
+         * @param {string} organisation The organisation ID
+         * @param {string} [filter] JSON-encoded metadata filter. Supports exact match and array contains filters.
+         * @param {number} [limit] Maximum files to return
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFiles: (organisation_1, filter_1, limit_1, cursor_1, ...args_1) => __awaiter(this, [organisation_1, filter_1, limit_1, cursor_1, ...args_1], void 0, function* (organisation, filter, limit, cursor, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('listFiles', 'organisation', organisation);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/files`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (filter !== undefined) {
+                localVarQueryParameter['filter'] = filter;
+            }
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+            if (cursor !== undefined) {
+                localVarQueryParameter['cursor'] = cursor;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Uploads a file to S3 storage for later retrieval.      *      * **Two Upload Modes:**      *      * 1. **Direct Upload (≤7MB):** Send base64-encoded content in request body.      *      * 2. **Presigned URL Upload (any size):** Set `requestUploadUrl: true` to get a presigned S3 PUT URL, then upload directly to S3.      *      * **Supported Content Types:**      * - Images: image/png, image/jpeg, image/gif, image/webp, image/svg+xml      * - Documents: application/pdf, text/plain, text/markdown, text/html      * - Code: text/javascript, application/json, text/css, text/yaml      * - Archives: application/zip, application/gzip      * - Video: video/mp4, video/webm (use presigned URL for large files)      *      * **Metadata:**      * Attach any custom metadata for filtering. `artifactType` is auto-populated from contentType if not provided.
+         * @summary Upload File to S3
+         * @param {string} organisation The organisation ID
+         * @param {UploadFileRequest} uploadFileRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uploadFile: (organisation_1, uploadFileRequest_1, ...args_1) => __awaiter(this, [organisation_1, uploadFileRequest_1, ...args_1], void 0, function* (organisation, uploadFileRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('uploadFile', 'organisation', organisation);
+            // verify required parameter 'uploadFileRequest' is not null or undefined
+            (0, common_1.assertParamExists)('uploadFile', 'uploadFileRequest', uploadFileRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/files`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(uploadFileRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+    };
+};
+exports.AIFileStorageApiAxiosParamCreator = AIFileStorageApiAxiosParamCreator;
+/**
+ * AIFileStorageApi - functional programming interface
+ * @export
+ */
+const AIFileStorageApiFp = function (configuration) {
+    const localVarAxiosParamCreator = (0, exports.AIFileStorageApiAxiosParamCreator)(configuration);
+    return {
+        /**
+         * Deletes a file from S3 storage.
+         * @summary Delete File
+         * @param {string} organisation The organisation ID
+         * @param {string} fileId The file ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteFile(organisation, fileId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.deleteFile(organisation, fileId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIFileStorageApi.deleteFile']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Retrieves file metadata and a presigned download URL (valid for 1 hour).
+         * @summary Get File
+         * @param {string} organisation The organisation ID
+         * @param {string} fileId The file ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getFile(organisation, fileId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getFile(organisation, fileId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIFileStorageApi.getFile']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Lists files stored in S3 for this organization with optional metadata filtering and pagination.
+         * @summary List Files
+         * @param {string} organisation The organisation ID
+         * @param {string} [filter] JSON-encoded metadata filter. Supports exact match and array contains filters.
+         * @param {number} [limit] Maximum files to return
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFiles(organisation, filter, limit, cursor, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.listFiles(organisation, filter, limit, cursor, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIFileStorageApi.listFiles']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Uploads a file to S3 storage for later retrieval.      *      * **Two Upload Modes:**      *      * 1. **Direct Upload (≤7MB):** Send base64-encoded content in request body.      *      * 2. **Presigned URL Upload (any size):** Set `requestUploadUrl: true` to get a presigned S3 PUT URL, then upload directly to S3.      *      * **Supported Content Types:**      * - Images: image/png, image/jpeg, image/gif, image/webp, image/svg+xml      * - Documents: application/pdf, text/plain, text/markdown, text/html      * - Code: text/javascript, application/json, text/css, text/yaml      * - Archives: application/zip, application/gzip      * - Video: video/mp4, video/webm (use presigned URL for large files)      *      * **Metadata:**      * Attach any custom metadata for filtering. `artifactType` is auto-populated from contentType if not provided.
+         * @summary Upload File to S3
+         * @param {string} organisation The organisation ID
+         * @param {UploadFileRequest} uploadFileRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uploadFile(organisation, uploadFileRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.uploadFile(organisation, uploadFileRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIFileStorageApi.uploadFile']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+    };
+};
+exports.AIFileStorageApiFp = AIFileStorageApiFp;
+/**
+ * AIFileStorageApi - factory interface
+ * @export
+ */
+const AIFileStorageApiFactory = function (configuration, basePath, axios) {
+    const localVarFp = (0, exports.AIFileStorageApiFp)(configuration);
+    return {
+        /**
+         * Deletes a file from S3 storage.
+         * @summary Delete File
+         * @param {string} organisation The organisation ID
+         * @param {string} fileId The file ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteFile(organisation, fileId, options) {
+            return localVarFp.deleteFile(organisation, fileId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Retrieves file metadata and a presigned download URL (valid for 1 hour).
+         * @summary Get File
+         * @param {string} organisation The organisation ID
+         * @param {string} fileId The file ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getFile(organisation, fileId, options) {
+            return localVarFp.getFile(organisation, fileId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Lists files stored in S3 for this organization with optional metadata filtering and pagination.
+         * @summary List Files
+         * @param {string} organisation The organisation ID
+         * @param {string} [filter] JSON-encoded metadata filter. Supports exact match and array contains filters.
+         * @param {number} [limit] Maximum files to return
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listFiles(organisation, filter, limit, cursor, options) {
+            return localVarFp.listFiles(organisation, filter, limit, cursor, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Uploads a file to S3 storage for later retrieval.      *      * **Two Upload Modes:**      *      * 1. **Direct Upload (≤7MB):** Send base64-encoded content in request body.      *      * 2. **Presigned URL Upload (any size):** Set `requestUploadUrl: true` to get a presigned S3 PUT URL, then upload directly to S3.      *      * **Supported Content Types:**      * - Images: image/png, image/jpeg, image/gif, image/webp, image/svg+xml      * - Documents: application/pdf, text/plain, text/markdown, text/html      * - Code: text/javascript, application/json, text/css, text/yaml      * - Archives: application/zip, application/gzip      * - Video: video/mp4, video/webm (use presigned URL for large files)      *      * **Metadata:**      * Attach any custom metadata for filtering. `artifactType` is auto-populated from contentType if not provided.
+         * @summary Upload File to S3
+         * @param {string} organisation The organisation ID
+         * @param {UploadFileRequest} uploadFileRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        uploadFile(organisation, uploadFileRequest, options) {
+            return localVarFp.uploadFile(organisation, uploadFileRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+exports.AIFileStorageApiFactory = AIFileStorageApiFactory;
+/**
+ * AIFileStorageApi - object-oriented interface
+ * @export
+ * @class AIFileStorageApi
+ * @extends {BaseAPI}
+ */
+class AIFileStorageApi extends base_1.BaseAPI {
+    /**
+     * Deletes a file from S3 storage.
+     * @summary Delete File
+     * @param {string} organisation The organisation ID
+     * @param {string} fileId The file ID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIFileStorageApi
+     */
+    deleteFile(organisation, fileId, options) {
+        return (0, exports.AIFileStorageApiFp)(this.configuration).deleteFile(organisation, fileId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Retrieves file metadata and a presigned download URL (valid for 1 hour).
+     * @summary Get File
+     * @param {string} organisation The organisation ID
+     * @param {string} fileId The file ID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIFileStorageApi
+     */
+    getFile(organisation, fileId, options) {
+        return (0, exports.AIFileStorageApiFp)(this.configuration).getFile(organisation, fileId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Lists files stored in S3 for this organization with optional metadata filtering and pagination.
+     * @summary List Files
+     * @param {string} organisation The organisation ID
+     * @param {string} [filter] JSON-encoded metadata filter. Supports exact match and array contains filters.
+     * @param {number} [limit] Maximum files to return
+     * @param {string} [cursor] Pagination cursor from previous response
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIFileStorageApi
+     */
+    listFiles(organisation, filter, limit, cursor, options) {
+        return (0, exports.AIFileStorageApiFp)(this.configuration).listFiles(organisation, filter, limit, cursor, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Uploads a file to S3 storage for later retrieval.      *      * **Two Upload Modes:**      *      * 1. **Direct Upload (≤7MB):** Send base64-encoded content in request body.      *      * 2. **Presigned URL Upload (any size):** Set `requestUploadUrl: true` to get a presigned S3 PUT URL, then upload directly to S3.      *      * **Supported Content Types:**      * - Images: image/png, image/jpeg, image/gif, image/webp, image/svg+xml      * - Documents: application/pdf, text/plain, text/markdown, text/html      * - Code: text/javascript, application/json, text/css, text/yaml      * - Archives: application/zip, application/gzip      * - Video: video/mp4, video/webm (use presigned URL for large files)      *      * **Metadata:**      * Attach any custom metadata for filtering. `artifactType` is auto-populated from contentType if not provided.
+     * @summary Upload File to S3
+     * @param {string} organisation The organisation ID
+     * @param {UploadFileRequest} uploadFileRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIFileStorageApi
+     */
+    uploadFile(organisation, uploadFileRequest, options) {
+        return (0, exports.AIFileStorageApiFp)(this.configuration).uploadFile(organisation, uploadFileRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+exports.AIFileStorageApi = AIFileStorageApi;
+/**
  * AIInferenceApi - axios parameter creator
  * @export
  */
 const AIInferenceApiAxiosParamCreator = function (configuration) {
     return {
         /**
-         * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
+         * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion (200 response)      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      * - Ideal for complex prompts, large contexts, or client-side tools      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
          * @summary Chat inference via API Gateway (buffered responses) with multimodal support
          * @param {string} organisation The organisation ID
          * @param {ChatInferenceRequest} chatInferenceRequest Chat request with optional multimodal content blocks
@@ -7640,7 +4704,7 @@ const AIInferenceApiAxiosParamCreator = function (configuration) {
             };
         }),
         /**
-         * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
+         * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Execution Modes:**      * - **Streaming Mode** (default): Real-time SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
          * @summary Chat inference via streaming endpoint (true HTTP streaming) with multimodal support
          * @param {string} organisation The organisation ID
          * @param {ChatInferenceStreamRequest} chatInferenceStreamRequest Chat request with optional multimodal content blocks
@@ -7714,6 +4778,42 @@ const AIInferenceApiAxiosParamCreator = function (configuration) {
             };
         }),
         /**
+         * Poll the status of an async/durable chat execution.      *      * **When to use:** After starting chat inference with `async: true`, poll this endpoint      * to check execution status and retrieve results when complete.      *      * **Identifier:** Accepts either:      * - `requestId` (recommended): The short ID returned from the async request      * - `executionArn`: The full AWS Lambda durable execution ARN (must be URL-encoded)      *      * **Statuses:**      * - `pending`: Execution is starting (retry shortly)      * - `running`: Execution is in progress      * - `waiting_callback`: Execution paused, waiting for client tool results      * - `complete`: Execution finished successfully      * - `failed`: Execution failed with error      *      * **Client Tool Callback:**      * When status is `waiting_callback`, submit tool results via `POST /ai/chat/callback`.      *      * **Polling Recommendations:**      * - Start with 1 second delay, exponential backoff up to 30 seconds      * - Stop polling after 15 minutes (consider failed)
+         * @summary Get Durable Execution Status
+         * @param {string} organisation The organisation ID
+         * @param {string} identifier Either the requestId from async response, or full executionArn (URL-encoded)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDurableExecutionStatus: (organisation_1, identifier_1, ...args_1) => __awaiter(this, [organisation_1, identifier_1, ...args_1], void 0, function* (organisation, identifier, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getDurableExecutionStatus', 'organisation', organisation);
+            // verify required parameter 'identifier' is not null or undefined
+            (0, common_1.assertParamExists)('getDurableExecutionStatus', 'identifier', identifier);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/chat/executions/{identifier}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"identifier"}}`, encodeURIComponent(String(identifier)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
          * Generates images using Amazon Nova Canvas image generation model.      *      * **Region Restriction:** Nova Canvas is ONLY available in:      * - `us-east-1` (US East, N. Virginia)      * - `ap-northeast-1` (Asia Pacific, Tokyo)      * - `eu-west-1` (Europe, Ireland)      * ❌ NOT available in `ap-southeast-2` (Sydney)      *      * **Supported Task Types:**      * - **TEXT_IMAGE**: Basic text-to-image generation      * - **TEXT_IMAGE with Conditioning**: Layout-guided generation using edge detection or segmentation      * - **COLOR_GUIDED_GENERATION**: Generate images with specific color palettes      * - **IMAGE_VARIATION**: Create variations of existing images      * - **INPAINTING**: Fill masked areas in images      * - **OUTPAINTING**: Extend images beyond their borders      * - **BACKGROUND_REMOVAL**: Remove backgrounds from images      * - **VIRTUAL_TRY_ON**: Try on garments/objects on people      *      * **Quality Options:**      * - **standard**: Faster generation, lower cost      * - **premium**: Higher quality, slower generation      *      * **Timeout:** Image generation can take up to 5 minutes
          * @summary Generate images with Amazon Nova Canvas
          * @param {string} organisation The organisation ID
@@ -7750,6 +4850,43 @@ const AIInferenceApiAxiosParamCreator = function (configuration) {
                 options: localVarRequestOptions,
             };
         }),
+        /**
+         * Submit tool execution results to resume a suspended durable execution.      *      * **When to use:** When polling the execution status returns `waiting_callback`, use this endpoint      * to submit the results of client-executed tools. The execution will then resume.      *      * **Flow:**      * 1. Start async chat with client-executed tools (`autoExecute: []` or tools not in autoExecute list)      * 2. Poll status until `waiting_callback`      * 3. Execute tools locally using `pendingTools` from status response      * 4. Submit results here with the `callbackId`      * 5. Poll status until `complete`      *      * **Important:** Each `callbackId` can only be used once. After submission, poll the execution      * status to see the updated state.
+         * @summary Submit Client Tool Results (Callback)
+         * @param {string} organisation The organisation ID
+         * @param {SubmitToolCallbackRequest} submitToolCallbackRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitToolCallback: (organisation_1, submitToolCallbackRequest_1, ...args_1) => __awaiter(this, [organisation_1, submitToolCallbackRequest_1, ...args_1], void 0, function* (organisation, submitToolCallbackRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('submitToolCallback', 'organisation', organisation);
+            // verify required parameter 'submitToolCallbackRequest' is not null or undefined
+            (0, common_1.assertParamExists)('submitToolCallback', 'submitToolCallbackRequest', submitToolCallbackRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/chat/callback`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(submitToolCallbackRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
     };
 };
 exports.AIInferenceApiAxiosParamCreator = AIInferenceApiAxiosParamCreator;
@@ -7761,7 +4898,7 @@ const AIInferenceApiFp = function (configuration) {
     const localVarAxiosParamCreator = (0, exports.AIInferenceApiAxiosParamCreator)(configuration);
     return {
         /**
-         * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
+         * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion (200 response)      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      * - Ideal for complex prompts, large contexts, or client-side tools      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
          * @summary Chat inference via API Gateway (buffered responses) with multimodal support
          * @param {string} organisation The organisation ID
          * @param {ChatInferenceRequest} chatInferenceRequest Chat request with optional multimodal content blocks
@@ -7778,7 +4915,7 @@ const AIInferenceApiFp = function (configuration) {
             });
         },
         /**
-         * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
+         * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Execution Modes:**      * - **Streaming Mode** (default): Real-time SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
          * @summary Chat inference via streaming endpoint (true HTTP streaming) with multimodal support
          * @param {string} organisation The organisation ID
          * @param {ChatInferenceStreamRequest} chatInferenceStreamRequest Chat request with optional multimodal content blocks
@@ -7812,6 +4949,23 @@ const AIInferenceApiFp = function (configuration) {
             });
         },
         /**
+         * Poll the status of an async/durable chat execution.      *      * **When to use:** After starting chat inference with `async: true`, poll this endpoint      * to check execution status and retrieve results when complete.      *      * **Identifier:** Accepts either:      * - `requestId` (recommended): The short ID returned from the async request      * - `executionArn`: The full AWS Lambda durable execution ARN (must be URL-encoded)      *      * **Statuses:**      * - `pending`: Execution is starting (retry shortly)      * - `running`: Execution is in progress      * - `waiting_callback`: Execution paused, waiting for client tool results      * - `complete`: Execution finished successfully      * - `failed`: Execution failed with error      *      * **Client Tool Callback:**      * When status is `waiting_callback`, submit tool results via `POST /ai/chat/callback`.      *      * **Polling Recommendations:**      * - Start with 1 second delay, exponential backoff up to 30 seconds      * - Stop polling after 15 minutes (consider failed)
+         * @summary Get Durable Execution Status
+         * @param {string} organisation The organisation ID
+         * @param {string} identifier Either the requestId from async response, or full executionArn (URL-encoded)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDurableExecutionStatus(organisation, identifier, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getDurableExecutionStatus(organisation, identifier, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIInferenceApi.getDurableExecutionStatus']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
          * Generates images using Amazon Nova Canvas image generation model.      *      * **Region Restriction:** Nova Canvas is ONLY available in:      * - `us-east-1` (US East, N. Virginia)      * - `ap-northeast-1` (Asia Pacific, Tokyo)      * - `eu-west-1` (Europe, Ireland)      * ❌ NOT available in `ap-southeast-2` (Sydney)      *      * **Supported Task Types:**      * - **TEXT_IMAGE**: Basic text-to-image generation      * - **TEXT_IMAGE with Conditioning**: Layout-guided generation using edge detection or segmentation      * - **COLOR_GUIDED_GENERATION**: Generate images with specific color palettes      * - **IMAGE_VARIATION**: Create variations of existing images      * - **INPAINTING**: Fill masked areas in images      * - **OUTPAINTING**: Extend images beyond their borders      * - **BACKGROUND_REMOVAL**: Remove backgrounds from images      * - **VIRTUAL_TRY_ON**: Try on garments/objects on people      *      * **Quality Options:**      * - **standard**: Faster generation, lower cost      * - **premium**: Higher quality, slower generation      *      * **Timeout:** Image generation can take up to 5 minutes
          * @summary Generate images with Amazon Nova Canvas
          * @param {string} organisation The organisation ID
@@ -7828,6 +4982,23 @@ const AIInferenceApiFp = function (configuration) {
                 return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
             });
         },
+        /**
+         * Submit tool execution results to resume a suspended durable execution.      *      * **When to use:** When polling the execution status returns `waiting_callback`, use this endpoint      * to submit the results of client-executed tools. The execution will then resume.      *      * **Flow:**      * 1. Start async chat with client-executed tools (`autoExecute: []` or tools not in autoExecute list)      * 2. Poll status until `waiting_callback`      * 3. Execute tools locally using `pendingTools` from status response      * 4. Submit results here with the `callbackId`      * 5. Poll status until `complete`      *      * **Important:** Each `callbackId` can only be used once. After submission, poll the execution      * status to see the updated state.
+         * @summary Submit Client Tool Results (Callback)
+         * @param {string} organisation The organisation ID
+         * @param {SubmitToolCallbackRequest} submitToolCallbackRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitToolCallback(organisation, submitToolCallbackRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.submitToolCallback(organisation, submitToolCallbackRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIInferenceApi.submitToolCallback']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
     };
 };
 exports.AIInferenceApiFp = AIInferenceApiFp;
@@ -7839,7 +5010,7 @@ const AIInferenceApiFactory = function (configuration, basePath, axios) {
     const localVarFp = (0, exports.AIInferenceApiFp)(configuration);
     return {
         /**
-         * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
+         * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion (200 response)      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      * - Ideal for complex prompts, large contexts, or client-side tools      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
          * @summary Chat inference via API Gateway (buffered responses) with multimodal support
          * @param {string} organisation The organisation ID
          * @param {ChatInferenceRequest} chatInferenceRequest Chat request with optional multimodal content blocks
@@ -7850,7 +5021,7 @@ const AIInferenceApiFactory = function (configuration, basePath, axios) {
             return localVarFp.chatInference(organisation, chatInferenceRequest, options).then((request) => request(axios, basePath));
         },
         /**
-         * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
+         * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Execution Modes:**      * - **Streaming Mode** (default): Real-time SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
          * @summary Chat inference via streaming endpoint (true HTTP streaming) with multimodal support
          * @param {string} organisation The organisation ID
          * @param {ChatInferenceStreamRequest} chatInferenceStreamRequest Chat request with optional multimodal content blocks
@@ -7872,6 +5043,17 @@ const AIInferenceApiFactory = function (configuration, basePath, axios) {
             return localVarFp.embeddings(organisation, embeddingsRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Poll the status of an async/durable chat execution.      *      * **When to use:** After starting chat inference with `async: true`, poll this endpoint      * to check execution status and retrieve results when complete.      *      * **Identifier:** Accepts either:      * - `requestId` (recommended): The short ID returned from the async request      * - `executionArn`: The full AWS Lambda durable execution ARN (must be URL-encoded)      *      * **Statuses:**      * - `pending`: Execution is starting (retry shortly)      * - `running`: Execution is in progress      * - `waiting_callback`: Execution paused, waiting for client tool results      * - `complete`: Execution finished successfully      * - `failed`: Execution failed with error      *      * **Client Tool Callback:**      * When status is `waiting_callback`, submit tool results via `POST /ai/chat/callback`.      *      * **Polling Recommendations:**      * - Start with 1 second delay, exponential backoff up to 30 seconds      * - Stop polling after 15 minutes (consider failed)
+         * @summary Get Durable Execution Status
+         * @param {string} organisation The organisation ID
+         * @param {string} identifier Either the requestId from async response, or full executionArn (URL-encoded)
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDurableExecutionStatus(organisation, identifier, options) {
+            return localVarFp.getDurableExecutionStatus(organisation, identifier, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Generates images using Amazon Nova Canvas image generation model.      *      * **Region Restriction:** Nova Canvas is ONLY available in:      * - `us-east-1` (US East, N. Virginia)      * - `ap-northeast-1` (Asia Pacific, Tokyo)      * - `eu-west-1` (Europe, Ireland)      * ❌ NOT available in `ap-southeast-2` (Sydney)      *      * **Supported Task Types:**      * - **TEXT_IMAGE**: Basic text-to-image generation      * - **TEXT_IMAGE with Conditioning**: Layout-guided generation using edge detection or segmentation      * - **COLOR_GUIDED_GENERATION**: Generate images with specific color palettes      * - **IMAGE_VARIATION**: Create variations of existing images      * - **INPAINTING**: Fill masked areas in images      * - **OUTPAINTING**: Extend images beyond their borders      * - **BACKGROUND_REMOVAL**: Remove backgrounds from images      * - **VIRTUAL_TRY_ON**: Try on garments/objects on people      *      * **Quality Options:**      * - **standard**: Faster generation, lower cost      * - **premium**: Higher quality, slower generation      *      * **Timeout:** Image generation can take up to 5 minutes
          * @summary Generate images with Amazon Nova Canvas
          * @param {string} organisation The organisation ID
@@ -7881,6 +5063,17 @@ const AIInferenceApiFactory = function (configuration, basePath, axios) {
          */
         imageGeneration(organisation, imageGenerationRequest, options) {
             return localVarFp.imageGeneration(organisation, imageGenerationRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Submit tool execution results to resume a suspended durable execution.      *      * **When to use:** When polling the execution status returns `waiting_callback`, use this endpoint      * to submit the results of client-executed tools. The execution will then resume.      *      * **Flow:**      * 1. Start async chat with client-executed tools (`autoExecute: []` or tools not in autoExecute list)      * 2. Poll status until `waiting_callback`      * 3. Execute tools locally using `pendingTools` from status response      * 4. Submit results here with the `callbackId`      * 5. Poll status until `complete`      *      * **Important:** Each `callbackId` can only be used once. After submission, poll the execution      * status to see the updated state.
+         * @summary Submit Client Tool Results (Callback)
+         * @param {string} organisation The organisation ID
+         * @param {SubmitToolCallbackRequest} submitToolCallbackRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        submitToolCallback(organisation, submitToolCallbackRequest, options) {
+            return localVarFp.submitToolCallback(organisation, submitToolCallbackRequest, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -7893,7 +5086,7 @@ exports.AIInferenceApiFactory = AIInferenceApiFactory;
  */
 class AIInferenceApi extends base_1.BaseAPI {
     /**
-     * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
+     * Sends requests to the AI API Gateway endpoint which buffers responses. Supports text, images, videos, and documents via base64 encoding.      *      * **Execution Modes:**      * - **Sync Mode** (default): Standard JSON response, waits for completion (200 response)      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      * - Ideal for complex prompts, large contexts, or client-side tools      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      *      * **Response Patterns:**      * - **Text-only**: Returns simple text response when no tools requested      * - **Single tool**: Returns `toolUse` object when AI requests one tool      * - **Multiple tools**: Returns `toolUse` array when AI requests multiple tools      * - **Auto-execute sync**: Automatically executes tool and returns final text response      * - **Auto-execute async**: Returns toolUse with `executionId` and `status` for polling
      * @summary Chat inference via API Gateway (buffered responses) with multimodal support
      * @param {string} organisation The organisation ID
      * @param {ChatInferenceRequest} chatInferenceRequest Chat request with optional multimodal content blocks
@@ -7905,7 +5098,7 @@ class AIInferenceApi extends base_1.BaseAPI {
         return (0, exports.AIInferenceApiFp)(this.configuration).chatInference(organisation, chatInferenceRequest, options).then((request) => request(this.axios, this.basePath));
     }
     /**
-     * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models:**      * - Amazon Nova Lite, Micro, Pro (all support multimodal)      * - Claude models (text only)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
+     * Streams responses from the AI streaming subdomain using Server-Sent Events (SSE). Tokens are streamed in real-time as they are generated.      *      * **Execution Modes:**      * - **Streaming Mode** (default): Real-time SSE token-by-token responses      * - **Async Mode**: Set `async: true` for long-running tasks with polling (202 response)      *      * **Async/Durable Mode (`async: true`):**      * - Returns immediately with `requestId` and `pollUrl` (HTTP 202)      * - Uses AWS Lambda Durable Functions for long-running inference      * - Supports client-executed tools via `waiting_callback` state      * - Poll `/ai/chat/executions/{requestId}` for status      * - Submit client tool results via `/ai/chat/callback`      *      * **Multimodal Support:**      * - **Text**: Simple string content      * - **Images**: Base64-encoded PNG, JPEG, GIF, WebP (up to 25MB)      * - **Videos**: Base64-encoded MP4, MOV, WebM, etc. (up to 25MB)      * - **Documents**: Base64-encoded PDF, DOCX, CSV, etc. (up to 25MB)      *      * **Supported Models (Multimodal):**      * - **Claude 4.5 Series**: Sonnet 4.5, Haiku 4.5, Opus 4.5 (images, up to 20 per request)      * - **Claude 3.5 Series**: Sonnet v1/v2 (images, up to 20 per request)      * - **Amazon Nova**: Lite, Pro, Micro (images, videos, documents)      *      * **Usage Tips:**      * - Use base64 encoding for images/videos < 5-10MB      * - Place media before text prompts for best results      * - Label multiple media files (e.g., \'Image 1:\', \'Image 2:\')      * - Maximum 25MB total payload size      * - Streaming works with all content types (text, image, video, document)
      * @summary Chat inference via streaming endpoint (true HTTP streaming) with multimodal support
      * @param {string} organisation The organisation ID
      * @param {ChatInferenceStreamRequest} chatInferenceStreamRequest Chat request with optional multimodal content blocks
@@ -7929,6 +5122,18 @@ class AIInferenceApi extends base_1.BaseAPI {
         return (0, exports.AIInferenceApiFp)(this.configuration).embeddings(organisation, embeddingsRequest, options).then((request) => request(this.axios, this.basePath));
     }
     /**
+     * Poll the status of an async/durable chat execution.      *      * **When to use:** After starting chat inference with `async: true`, poll this endpoint      * to check execution status and retrieve results when complete.      *      * **Identifier:** Accepts either:      * - `requestId` (recommended): The short ID returned from the async request      * - `executionArn`: The full AWS Lambda durable execution ARN (must be URL-encoded)      *      * **Statuses:**      * - `pending`: Execution is starting (retry shortly)      * - `running`: Execution is in progress      * - `waiting_callback`: Execution paused, waiting for client tool results      * - `complete`: Execution finished successfully      * - `failed`: Execution failed with error      *      * **Client Tool Callback:**      * When status is `waiting_callback`, submit tool results via `POST /ai/chat/callback`.      *      * **Polling Recommendations:**      * - Start with 1 second delay, exponential backoff up to 30 seconds      * - Stop polling after 15 minutes (consider failed)
+     * @summary Get Durable Execution Status
+     * @param {string} organisation The organisation ID
+     * @param {string} identifier Either the requestId from async response, or full executionArn (URL-encoded)
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIInferenceApi
+     */
+    getDurableExecutionStatus(organisation, identifier, options) {
+        return (0, exports.AIInferenceApiFp)(this.configuration).getDurableExecutionStatus(organisation, identifier, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
      * Generates images using Amazon Nova Canvas image generation model.      *      * **Region Restriction:** Nova Canvas is ONLY available in:      * - `us-east-1` (US East, N. Virginia)      * - `ap-northeast-1` (Asia Pacific, Tokyo)      * - `eu-west-1` (Europe, Ireland)      * ❌ NOT available in `ap-southeast-2` (Sydney)      *      * **Supported Task Types:**      * - **TEXT_IMAGE**: Basic text-to-image generation      * - **TEXT_IMAGE with Conditioning**: Layout-guided generation using edge detection or segmentation      * - **COLOR_GUIDED_GENERATION**: Generate images with specific color palettes      * - **IMAGE_VARIATION**: Create variations of existing images      * - **INPAINTING**: Fill masked areas in images      * - **OUTPAINTING**: Extend images beyond their borders      * - **BACKGROUND_REMOVAL**: Remove backgrounds from images      * - **VIRTUAL_TRY_ON**: Try on garments/objects on people      *      * **Quality Options:**      * - **standard**: Faster generation, lower cost      * - **premium**: Higher quality, slower generation      *      * **Timeout:** Image generation can take up to 5 minutes
      * @summary Generate images with Amazon Nova Canvas
      * @param {string} organisation The organisation ID
@@ -7939,6 +5144,18 @@ class AIInferenceApi extends base_1.BaseAPI {
      */
     imageGeneration(organisation, imageGenerationRequest, options) {
         return (0, exports.AIInferenceApiFp)(this.configuration).imageGeneration(organisation, imageGenerationRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Submit tool execution results to resume a suspended durable execution.      *      * **When to use:** When polling the execution status returns `waiting_callback`, use this endpoint      * to submit the results of client-executed tools. The execution will then resume.      *      * **Flow:**      * 1. Start async chat with client-executed tools (`autoExecute: []` or tools not in autoExecute list)      * 2. Poll status until `waiting_callback`      * 3. Execute tools locally using `pendingTools` from status response      * 4. Submit results here with the `callbackId`      * 5. Poll status until `complete`      *      * **Important:** Each `callbackId` can only be used once. After submission, poll the execution      * status to see the updated state.
+     * @summary Submit Client Tool Results (Callback)
+     * @param {string} organisation The organisation ID
+     * @param {SubmitToolCallbackRequest} submitToolCallbackRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIInferenceApi
+     */
+    submitToolCallback(organisation, submitToolCallbackRequest, options) {
+        return (0, exports.AIInferenceApiFp)(this.configuration).submitToolCallback(organisation, submitToolCallbackRequest, options).then((request) => request(this.axios, this.basePath));
     }
 }
 exports.AIInferenceApi = AIInferenceApi;
@@ -8256,6 +5473,768 @@ class AIMonitoringApi extends base_1.BaseAPI {
     }
 }
 exports.AIMonitoringApi = AIMonitoringApi;
+/**
+ * AIOrchestrationsApi - axios parameter creator
+ * @export
+ */
+const AIOrchestrationsApiAxiosParamCreator = function (configuration) {
+    return {
+        /**
+         * Cancel an orchestration permanently. Cannot be resumed. Any in-progress items will complete, but no new processing starts.
+         * @summary Cancel Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        cancelOrchestration: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('cancelOrchestration', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('cancelOrchestration', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}/cancel`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Create a new durable orchestration for batch processing.      *      * **Input Sources:**      * - `static`: Process a fixed list of items      * - `task_query`: Process tasks matching a query      * - `generator`: AI generates items from a prompt      *      * **Stop Conditions:**      * - `all_complete`: Stop when all items processed      * - `max_iterations`: Stop after N iterations      * - `condition`: AI evaluates a prompt to decide      * - `manual`: Run until manually stopped      *      * **Auto-start:**      * By default, the orchestration starts immediately. Set `autoStart: false` to create in pending state.
+         * @summary Create Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {CreateOrchestrationRequest} createOrchestrationRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createOrchestration: (organisation_1, createOrchestrationRequest_1, ...args_1) => __awaiter(this, [organisation_1, createOrchestrationRequest_1, ...args_1], void 0, function* (organisation, createOrchestrationRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('createOrchestration', 'organisation', organisation);
+            // verify required parameter 'createOrchestrationRequest' is not null or undefined
+            (0, common_1.assertParamExists)('createOrchestration', 'createOrchestrationRequest', createOrchestrationRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(createOrchestrationRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Delete an orchestration. Can only delete orchestrations in completed, failed, or cancelled status.
+         * @summary Delete Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteOrchestration: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('deleteOrchestration', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('deleteOrchestration', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Get orchestration details including status and progress.      *      * **Progress Tracking:**      * - `total`: Total items to process      * - `completed`: Successfully processed      * - `failed`: Failed processing      * - `pending`: Awaiting processing
+         * @summary Get Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getOrchestration: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getOrchestration', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('getOrchestration', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Get history of batches processed by this orchestration. Returns paginated batch records with status and item counts.
+         * @summary List Orchestration Batches
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {number} [limit] Maximum number of batches to return
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listOrchestrationBatches: (organisation_1, orchestrationId_1, limit_1, cursor_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, limit_1, cursor_1, ...args_1], void 0, function* (organisation, orchestrationId, limit, cursor, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('listOrchestrationBatches', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('listOrchestrationBatches', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}/batches`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+            if (cursor !== undefined) {
+                localVarQueryParameter['cursor'] = cursor;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * List durable orchestrations for an organization with optional filtering.      *      * **Note:** This is different from `/tools/orchestrations` which handles async tool execution      * polling. These durable orchestrations are for long-running batch processing loops.      *      * **Filter Options:**      * - `status`: Filter by orchestration status      * - `limit`: Max results (default 20, max 100)      * - `cursor`: Pagination cursor
+         * @summary List Durable Orchestrations
+         * @param {string} organisation The organisation machine name
+         * @param {ListOrchestrationsStatusEnum} [status] Filter by orchestration status
+         * @param {number} [limit] Maximum number of results
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listOrchestrations: (organisation_1, status_1, limit_1, cursor_1, ...args_1) => __awaiter(this, [organisation_1, status_1, limit_1, cursor_1, ...args_1], void 0, function* (organisation, status, limit, cursor, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('listOrchestrations', 'organisation', organisation);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (status !== undefined) {
+                localVarQueryParameter['status'] = status;
+            }
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+            if (cursor !== undefined) {
+                localVarQueryParameter['cursor'] = cursor;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Pause a running orchestration. The current batch will complete, but no new batches will start. Can be resumed later.
+         * @summary Pause Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pauseOrchestration: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('pauseOrchestration', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('pauseOrchestration', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}/pause`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Resume a paused orchestration. Processing continues from where it left off.
+         * @summary Resume Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeOrchestration: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('resumeOrchestration', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('resumeOrchestration', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}/resume`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Start a pending orchestration. Only works on orchestrations created with `autoStart: false`.
+         * @summary Start Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startOrchestration: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('startOrchestration', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('startOrchestration', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/orchestrations/{orchestrationId}/start`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+    };
+};
+exports.AIOrchestrationsApiAxiosParamCreator = AIOrchestrationsApiAxiosParamCreator;
+/**
+ * AIOrchestrationsApi - functional programming interface
+ * @export
+ */
+const AIOrchestrationsApiFp = function (configuration) {
+    const localVarAxiosParamCreator = (0, exports.AIOrchestrationsApiAxiosParamCreator)(configuration);
+    return {
+        /**
+         * Cancel an orchestration permanently. Cannot be resumed. Any in-progress items will complete, but no new processing starts.
+         * @summary Cancel Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        cancelOrchestration(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.cancelOrchestration(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.cancelOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Create a new durable orchestration for batch processing.      *      * **Input Sources:**      * - `static`: Process a fixed list of items      * - `task_query`: Process tasks matching a query      * - `generator`: AI generates items from a prompt      *      * **Stop Conditions:**      * - `all_complete`: Stop when all items processed      * - `max_iterations`: Stop after N iterations      * - `condition`: AI evaluates a prompt to decide      * - `manual`: Run until manually stopped      *      * **Auto-start:**      * By default, the orchestration starts immediately. Set `autoStart: false` to create in pending state.
+         * @summary Create Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {CreateOrchestrationRequest} createOrchestrationRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createOrchestration(organisation, createOrchestrationRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.createOrchestration(organisation, createOrchestrationRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.createOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Delete an orchestration. Can only delete orchestrations in completed, failed, or cancelled status.
+         * @summary Delete Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteOrchestration(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.deleteOrchestration(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.deleteOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Get orchestration details including status and progress.      *      * **Progress Tracking:**      * - `total`: Total items to process      * - `completed`: Successfully processed      * - `failed`: Failed processing      * - `pending`: Awaiting processing
+         * @summary Get Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getOrchestration(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getOrchestration(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.getOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Get history of batches processed by this orchestration. Returns paginated batch records with status and item counts.
+         * @summary List Orchestration Batches
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {number} [limit] Maximum number of batches to return
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listOrchestrationBatches(organisation, orchestrationId, limit, cursor, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.listOrchestrationBatches(organisation, orchestrationId, limit, cursor, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.listOrchestrationBatches']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * List durable orchestrations for an organization with optional filtering.      *      * **Note:** This is different from `/tools/orchestrations` which handles async tool execution      * polling. These durable orchestrations are for long-running batch processing loops.      *      * **Filter Options:**      * - `status`: Filter by orchestration status      * - `limit`: Max results (default 20, max 100)      * - `cursor`: Pagination cursor
+         * @summary List Durable Orchestrations
+         * @param {string} organisation The organisation machine name
+         * @param {ListOrchestrationsStatusEnum} [status] Filter by orchestration status
+         * @param {number} [limit] Maximum number of results
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listOrchestrations(organisation, status, limit, cursor, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.listOrchestrations(organisation, status, limit, cursor, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.listOrchestrations']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Pause a running orchestration. The current batch will complete, but no new batches will start. Can be resumed later.
+         * @summary Pause Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pauseOrchestration(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.pauseOrchestration(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.pauseOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Resume a paused orchestration. Processing continues from where it left off.
+         * @summary Resume Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeOrchestration(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.resumeOrchestration(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.resumeOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Start a pending orchestration. Only works on orchestrations created with `autoStart: false`.
+         * @summary Start Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startOrchestration(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.startOrchestration(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIOrchestrationsApi.startOrchestration']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+    };
+};
+exports.AIOrchestrationsApiFp = AIOrchestrationsApiFp;
+/**
+ * AIOrchestrationsApi - factory interface
+ * @export
+ */
+const AIOrchestrationsApiFactory = function (configuration, basePath, axios) {
+    const localVarFp = (0, exports.AIOrchestrationsApiFp)(configuration);
+    return {
+        /**
+         * Cancel an orchestration permanently. Cannot be resumed. Any in-progress items will complete, but no new processing starts.
+         * @summary Cancel Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        cancelOrchestration(organisation, orchestrationId, options) {
+            return localVarFp.cancelOrchestration(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Create a new durable orchestration for batch processing.      *      * **Input Sources:**      * - `static`: Process a fixed list of items      * - `task_query`: Process tasks matching a query      * - `generator`: AI generates items from a prompt      *      * **Stop Conditions:**      * - `all_complete`: Stop when all items processed      * - `max_iterations`: Stop after N iterations      * - `condition`: AI evaluates a prompt to decide      * - `manual`: Run until manually stopped      *      * **Auto-start:**      * By default, the orchestration starts immediately. Set `autoStart: false` to create in pending state.
+         * @summary Create Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {CreateOrchestrationRequest} createOrchestrationRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createOrchestration(organisation, createOrchestrationRequest, options) {
+            return localVarFp.createOrchestration(organisation, createOrchestrationRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Delete an orchestration. Can only delete orchestrations in completed, failed, or cancelled status.
+         * @summary Delete Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteOrchestration(organisation, orchestrationId, options) {
+            return localVarFp.deleteOrchestration(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Get orchestration details including status and progress.      *      * **Progress Tracking:**      * - `total`: Total items to process      * - `completed`: Successfully processed      * - `failed`: Failed processing      * - `pending`: Awaiting processing
+         * @summary Get Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getOrchestration(organisation, orchestrationId, options) {
+            return localVarFp.getOrchestration(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Get history of batches processed by this orchestration. Returns paginated batch records with status and item counts.
+         * @summary List Orchestration Batches
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {number} [limit] Maximum number of batches to return
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listOrchestrationBatches(organisation, orchestrationId, limit, cursor, options) {
+            return localVarFp.listOrchestrationBatches(organisation, orchestrationId, limit, cursor, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * List durable orchestrations for an organization with optional filtering.      *      * **Note:** This is different from `/tools/orchestrations` which handles async tool execution      * polling. These durable orchestrations are for long-running batch processing loops.      *      * **Filter Options:**      * - `status`: Filter by orchestration status      * - `limit`: Max results (default 20, max 100)      * - `cursor`: Pagination cursor
+         * @summary List Durable Orchestrations
+         * @param {string} organisation The organisation machine name
+         * @param {ListOrchestrationsStatusEnum} [status] Filter by orchestration status
+         * @param {number} [limit] Maximum number of results
+         * @param {string} [cursor] Pagination cursor from previous response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listOrchestrations(organisation, status, limit, cursor, options) {
+            return localVarFp.listOrchestrations(organisation, status, limit, cursor, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Pause a running orchestration. The current batch will complete, but no new batches will start. Can be resumed later.
+         * @summary Pause Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        pauseOrchestration(organisation, orchestrationId, options) {
+            return localVarFp.pauseOrchestration(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Resume a paused orchestration. Processing continues from where it left off.
+         * @summary Resume Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        resumeOrchestration(organisation, orchestrationId, options) {
+            return localVarFp.resumeOrchestration(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Start a pending orchestration. Only works on orchestrations created with `autoStart: false`.
+         * @summary Start Durable Orchestration
+         * @param {string} organisation The organisation machine name
+         * @param {string} orchestrationId Orchestration identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        startOrchestration(organisation, orchestrationId, options) {
+            return localVarFp.startOrchestration(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+exports.AIOrchestrationsApiFactory = AIOrchestrationsApiFactory;
+/**
+ * AIOrchestrationsApi - object-oriented interface
+ * @export
+ * @class AIOrchestrationsApi
+ * @extends {BaseAPI}
+ */
+class AIOrchestrationsApi extends base_1.BaseAPI {
+    /**
+     * Cancel an orchestration permanently. Cannot be resumed. Any in-progress items will complete, but no new processing starts.
+     * @summary Cancel Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    cancelOrchestration(organisation, orchestrationId, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).cancelOrchestration(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Create a new durable orchestration for batch processing.      *      * **Input Sources:**      * - `static`: Process a fixed list of items      * - `task_query`: Process tasks matching a query      * - `generator`: AI generates items from a prompt      *      * **Stop Conditions:**      * - `all_complete`: Stop when all items processed      * - `max_iterations`: Stop after N iterations      * - `condition`: AI evaluates a prompt to decide      * - `manual`: Run until manually stopped      *      * **Auto-start:**      * By default, the orchestration starts immediately. Set `autoStart: false` to create in pending state.
+     * @summary Create Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {CreateOrchestrationRequest} createOrchestrationRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    createOrchestration(organisation, createOrchestrationRequest, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).createOrchestration(organisation, createOrchestrationRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Delete an orchestration. Can only delete orchestrations in completed, failed, or cancelled status.
+     * @summary Delete Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    deleteOrchestration(organisation, orchestrationId, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).deleteOrchestration(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Get orchestration details including status and progress.      *      * **Progress Tracking:**      * - `total`: Total items to process      * - `completed`: Successfully processed      * - `failed`: Failed processing      * - `pending`: Awaiting processing
+     * @summary Get Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    getOrchestration(organisation, orchestrationId, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).getOrchestration(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Get history of batches processed by this orchestration. Returns paginated batch records with status and item counts.
+     * @summary List Orchestration Batches
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {number} [limit] Maximum number of batches to return
+     * @param {string} [cursor] Pagination cursor from previous response
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    listOrchestrationBatches(organisation, orchestrationId, limit, cursor, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).listOrchestrationBatches(organisation, orchestrationId, limit, cursor, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * List durable orchestrations for an organization with optional filtering.      *      * **Note:** This is different from `/tools/orchestrations` which handles async tool execution      * polling. These durable orchestrations are for long-running batch processing loops.      *      * **Filter Options:**      * - `status`: Filter by orchestration status      * - `limit`: Max results (default 20, max 100)      * - `cursor`: Pagination cursor
+     * @summary List Durable Orchestrations
+     * @param {string} organisation The organisation machine name
+     * @param {ListOrchestrationsStatusEnum} [status] Filter by orchestration status
+     * @param {number} [limit] Maximum number of results
+     * @param {string} [cursor] Pagination cursor from previous response
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    listOrchestrations(organisation, status, limit, cursor, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).listOrchestrations(organisation, status, limit, cursor, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Pause a running orchestration. The current batch will complete, but no new batches will start. Can be resumed later.
+     * @summary Pause Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    pauseOrchestration(organisation, orchestrationId, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).pauseOrchestration(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Resume a paused orchestration. Processing continues from where it left off.
+     * @summary Resume Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    resumeOrchestration(organisation, orchestrationId, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).resumeOrchestration(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Start a pending orchestration. Only works on orchestrations created with `autoStart: false`.
+     * @summary Start Durable Orchestration
+     * @param {string} organisation The organisation machine name
+     * @param {string} orchestrationId Orchestration identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIOrchestrationsApi
+     */
+    startOrchestration(organisation, orchestrationId, options) {
+        return (0, exports.AIOrchestrationsApiFp)(this.configuration).startOrchestration(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+exports.AIOrchestrationsApi = AIOrchestrationsApi;
+/**
+ * @export
+ */
+exports.ListOrchestrationsStatusEnum = {
+    Pending: 'pending',
+    Running: 'running',
+    Paused: 'paused',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled'
+};
 /**
  * AISessionsApi - axios parameter creator
  * @export
@@ -8794,11 +6773,1495 @@ class AISessionsApi extends base_1.BaseAPI {
 }
 exports.AISessionsApi = AISessionsApi;
 /**
+ * AISkillsApi - axios parameter creator
+ * @export
+ */
+const AISkillsApiAxiosParamCreator = function (configuration) {
+    return {
+        /**
+         * Creates a new skill with inline content. Use this for custom skills      * that are defined directly in your organization.      *      * **Trigger Conditions:**      * - Natural language description of when to use the skill      * - Used by AI to determine when to suggest or apply the skill      * - Example: \'When the user asks about code review or security analysis\'
+         * @summary Create Inline Skill
+         * @param {string} organisation The organisation ID
+         * @param {CreateSkillRequest} createSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSkill: (organisation_1, createSkillRequest_1, ...args_1) => __awaiter(this, [organisation_1, createSkillRequest_1, ...args_1], void 0, function* (organisation, createSkillRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('createSkill', 'organisation', organisation);
+            // verify required parameter 'createSkillRequest' is not null or undefined
+            (0, common_1.assertParamExists)('createSkill', 'createSkillRequest', createSkillRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(createSkillRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Permanently deletes a skill. This will also remove it from any agents that have it assigned.
+         * @summary Delete Skill
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSkill: (organisation_1, skillId_1, ...args_1) => __awaiter(this, [organisation_1, skillId_1, ...args_1], void 0, function* (organisation, skillId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('deleteSkill', 'organisation', organisation);
+            // verify required parameter 'skillId' is not null or undefined
+            (0, common_1.assertParamExists)('deleteSkill', 'skillId', skillId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/{skillId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"skillId"}}`, encodeURIComponent(String(skillId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Permanently deletes all skills in the specified namespace.
+         * @summary Delete Skill Collection
+         * @param {string} organisation The organisation ID
+         * @param {string} namespace Collection namespace
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSkillCollection: (organisation_1, namespace_1, ...args_1) => __awaiter(this, [organisation_1, namespace_1, ...args_1], void 0, function* (organisation, namespace, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('deleteSkillCollection', 'organisation', organisation);
+            // verify required parameter 'namespace' is not null or undefined
+            (0, common_1.assertParamExists)('deleteSkillCollection', 'namespace', namespace);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/collections/{namespace}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"namespace"}}`, encodeURIComponent(String(namespace)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Retrieves full details of a skill including its content, source information, and metadata.
+         * @summary Get Skill Details
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSkill: (organisation_1, skillId_1, ...args_1) => __awaiter(this, [organisation_1, skillId_1, ...args_1], void 0, function* (organisation, skillId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getSkill', 'organisation', organisation);
+            // verify required parameter 'skillId' is not null or undefined
+            (0, common_1.assertParamExists)('getSkill', 'skillId', skillId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/{skillId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"skillId"}}`, encodeURIComponent(String(skillId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Imports a skill from an external source like skills.sh registry or GitHub repository.      *      * **Supported Sources:**      * - `skills.sh`: Import from the skills.sh community registry      * - `github`: Import from a GitHub repository (public or private)      *      * **Version Control:**      * - Skills can be pinned to specific versions      * - Use the sync endpoint to update to latest version
+         * @summary Import Skill from External Source
+         * @param {string} organisation The organisation ID
+         * @param {ImportSkillRequest} importSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        importSkill: (organisation_1, importSkillRequest_1, ...args_1) => __awaiter(this, [organisation_1, importSkillRequest_1, ...args_1], void 0, function* (organisation, importSkillRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('importSkill', 'organisation', organisation);
+            // verify required parameter 'importSkillRequest' is not null or undefined
+            (0, common_1.assertParamExists)('importSkill', 'importSkillRequest', importSkillRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/import`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(importSkillRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Discovers all skill directories under a given path in a GitHub repository      * and imports each as a skill within the specified namespace. Each subdirectory must contain a SKILL.md file.      *      * **Namespace:** Used for grouping and slash-command invocation (e.g., `/superpowers:brainstorming`).      *      * **Idempotent:** If a skill with the same namespace + name already exists, it is updated.
+         * @summary Import Skill Collection from GitHub
+         * @param {string} organisation The organisation ID
+         * @param {ImportSkillCollectionRequest} importSkillCollectionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        importSkillCollection: (organisation_1, importSkillCollectionRequest_1, ...args_1) => __awaiter(this, [organisation_1, importSkillCollectionRequest_1, ...args_1], void 0, function* (organisation, importSkillCollectionRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('importSkillCollection', 'organisation', organisation);
+            // verify required parameter 'importSkillCollectionRequest' is not null or undefined
+            (0, common_1.assertParamExists)('importSkillCollection', 'importSkillCollectionRequest', importSkillCollectionRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/import-collection`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(importSkillCollectionRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Lists distinct namespaces (collections) for the organization, with skill counts and skill names for each collection.
+         * @summary List Skill Collections
+         * @param {string} organisation The organisation ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSkillCollections: (organisation_1, ...args_1) => __awaiter(this, [organisation_1, ...args_1], void 0, function* (organisation, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('listSkillCollections', 'organisation', organisation);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/collections`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Lists all skills available to the organization. Skills are reusable prompts,      * workflows, or instructions that can be assigned to agents or invoked directly.      *      * **Skill Sources:**      * - `inline`: Created directly via the API      * - `skills.sh`: Imported from skills.sh registry      * - `github`: Imported from a GitHub repository      * - `local`: Uploaded from local file
+         * @summary List Organization\'s Skills
+         * @param {string} organisation The organisation ID
+         * @param {string} [tag] Filter skills by tag
+         * @param {string} [namespace] Filter skills by collection namespace (e.g. \&#39;superpowers\&#39;)
+         * @param {number} [limit] Maximum number of skills to return
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSkills: (organisation_1, tag_1, namespace_1, limit_1, ...args_1) => __awaiter(this, [organisation_1, tag_1, namespace_1, limit_1, ...args_1], void 0, function* (organisation, tag, namespace, limit, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('listSkills', 'organisation', organisation);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (tag !== undefined) {
+                localVarQueryParameter['tag'] = tag;
+            }
+            if (namespace !== undefined) {
+                localVarQueryParameter['namespace'] = namespace;
+            }
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Re-fetches skill content from its original source.      * Only applicable to skills imported from external sources (skills.sh, github).      * Inline skills cannot be synced.      *      * **Version Behavior:**      * - If version is pinned, fetches that specific version      * - If no version specified, fetches latest
+         * @summary Sync Skill from Source
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncSkill: (organisation_1, skillId_1, ...args_1) => __awaiter(this, [organisation_1, skillId_1, ...args_1], void 0, function* (organisation, skillId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('syncSkill', 'organisation', organisation);
+            // verify required parameter 'skillId' is not null or undefined
+            (0, common_1.assertParamExists)('syncSkill', 'skillId', skillId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/{skillId}/sync`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"skillId"}}`, encodeURIComponent(String(skillId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Re-syncs all skills in a namespace from their GitHub source. Detects new      * skills added to the repository and flags skills removed from the source. Does NOT auto-delete removed skills.
+         * @summary Sync Skill Collection
+         * @param {string} organisation The organisation ID
+         * @param {string} namespace Collection namespace
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncSkillCollection: (organisation_1, namespace_1, ...args_1) => __awaiter(this, [organisation_1, namespace_1, ...args_1], void 0, function* (organisation, namespace, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('syncSkillCollection', 'organisation', organisation);
+            // verify required parameter 'namespace' is not null or undefined
+            (0, common_1.assertParamExists)('syncSkillCollection', 'namespace', namespace);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/collections/{namespace}/sync`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"namespace"}}`, encodeURIComponent(String(namespace)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Updates an existing skill. For imported skills, this updates      * local overrides (name, tags, triggerCondition) but not the source content.      * Use the sync endpoint to update source content.
+         * @summary Update Skill
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {UpdateSkillRequest} updateSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSkill: (organisation_1, skillId_1, updateSkillRequest_1, ...args_1) => __awaiter(this, [organisation_1, skillId_1, updateSkillRequest_1, ...args_1], void 0, function* (organisation, skillId, updateSkillRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('updateSkill', 'organisation', organisation);
+            // verify required parameter 'skillId' is not null or undefined
+            (0, common_1.assertParamExists)('updateSkill', 'skillId', skillId);
+            // verify required parameter 'updateSkillRequest' is not null or undefined
+            (0, common_1.assertParamExists)('updateSkill', 'updateSkillRequest', updateSkillRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/skills/{skillId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"skillId"}}`, encodeURIComponent(String(skillId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'PUT' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(updateSkillRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+    };
+};
+exports.AISkillsApiAxiosParamCreator = AISkillsApiAxiosParamCreator;
+/**
+ * AISkillsApi - functional programming interface
+ * @export
+ */
+const AISkillsApiFp = function (configuration) {
+    const localVarAxiosParamCreator = (0, exports.AISkillsApiAxiosParamCreator)(configuration);
+    return {
+        /**
+         * Creates a new skill with inline content. Use this for custom skills      * that are defined directly in your organization.      *      * **Trigger Conditions:**      * - Natural language description of when to use the skill      * - Used by AI to determine when to suggest or apply the skill      * - Example: \'When the user asks about code review or security analysis\'
+         * @summary Create Inline Skill
+         * @param {string} organisation The organisation ID
+         * @param {CreateSkillRequest} createSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSkill(organisation, createSkillRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.createSkill(organisation, createSkillRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.createSkill']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Permanently deletes a skill. This will also remove it from any agents that have it assigned.
+         * @summary Delete Skill
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSkill(organisation, skillId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.deleteSkill(organisation, skillId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.deleteSkill']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Permanently deletes all skills in the specified namespace.
+         * @summary Delete Skill Collection
+         * @param {string} organisation The organisation ID
+         * @param {string} namespace Collection namespace
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSkillCollection(organisation, namespace, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.deleteSkillCollection(organisation, namespace, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.deleteSkillCollection']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Retrieves full details of a skill including its content, source information, and metadata.
+         * @summary Get Skill Details
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSkill(organisation, skillId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getSkill(organisation, skillId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.getSkill']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Imports a skill from an external source like skills.sh registry or GitHub repository.      *      * **Supported Sources:**      * - `skills.sh`: Import from the skills.sh community registry      * - `github`: Import from a GitHub repository (public or private)      *      * **Version Control:**      * - Skills can be pinned to specific versions      * - Use the sync endpoint to update to latest version
+         * @summary Import Skill from External Source
+         * @param {string} organisation The organisation ID
+         * @param {ImportSkillRequest} importSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        importSkill(organisation, importSkillRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.importSkill(organisation, importSkillRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.importSkill']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Discovers all skill directories under a given path in a GitHub repository      * and imports each as a skill within the specified namespace. Each subdirectory must contain a SKILL.md file.      *      * **Namespace:** Used for grouping and slash-command invocation (e.g., `/superpowers:brainstorming`).      *      * **Idempotent:** If a skill with the same namespace + name already exists, it is updated.
+         * @summary Import Skill Collection from GitHub
+         * @param {string} organisation The organisation ID
+         * @param {ImportSkillCollectionRequest} importSkillCollectionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        importSkillCollection(organisation, importSkillCollectionRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.importSkillCollection(organisation, importSkillCollectionRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.importSkillCollection']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Lists distinct namespaces (collections) for the organization, with skill counts and skill names for each collection.
+         * @summary List Skill Collections
+         * @param {string} organisation The organisation ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSkillCollections(organisation, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.listSkillCollections(organisation, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.listSkillCollections']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Lists all skills available to the organization. Skills are reusable prompts,      * workflows, or instructions that can be assigned to agents or invoked directly.      *      * **Skill Sources:**      * - `inline`: Created directly via the API      * - `skills.sh`: Imported from skills.sh registry      * - `github`: Imported from a GitHub repository      * - `local`: Uploaded from local file
+         * @summary List Organization\'s Skills
+         * @param {string} organisation The organisation ID
+         * @param {string} [tag] Filter skills by tag
+         * @param {string} [namespace] Filter skills by collection namespace (e.g. \&#39;superpowers\&#39;)
+         * @param {number} [limit] Maximum number of skills to return
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSkills(organisation, tag, namespace, limit, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.listSkills(organisation, tag, namespace, limit, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.listSkills']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Re-fetches skill content from its original source.      * Only applicable to skills imported from external sources (skills.sh, github).      * Inline skills cannot be synced.      *      * **Version Behavior:**      * - If version is pinned, fetches that specific version      * - If no version specified, fetches latest
+         * @summary Sync Skill from Source
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncSkill(organisation, skillId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.syncSkill(organisation, skillId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.syncSkill']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Re-syncs all skills in a namespace from their GitHub source. Detects new      * skills added to the repository and flags skills removed from the source. Does NOT auto-delete removed skills.
+         * @summary Sync Skill Collection
+         * @param {string} organisation The organisation ID
+         * @param {string} namespace Collection namespace
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncSkillCollection(organisation, namespace, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.syncSkillCollection(organisation, namespace, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.syncSkillCollection']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Updates an existing skill. For imported skills, this updates      * local overrides (name, tags, triggerCondition) but not the source content.      * Use the sync endpoint to update source content.
+         * @summary Update Skill
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {UpdateSkillRequest} updateSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSkill(organisation, skillId, updateSkillRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.updateSkill(organisation, skillId, updateSkillRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AISkillsApi.updateSkill']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+    };
+};
+exports.AISkillsApiFp = AISkillsApiFp;
+/**
+ * AISkillsApi - factory interface
+ * @export
+ */
+const AISkillsApiFactory = function (configuration, basePath, axios) {
+    const localVarFp = (0, exports.AISkillsApiFp)(configuration);
+    return {
+        /**
+         * Creates a new skill with inline content. Use this for custom skills      * that are defined directly in your organization.      *      * **Trigger Conditions:**      * - Natural language description of when to use the skill      * - Used by AI to determine when to suggest or apply the skill      * - Example: \'When the user asks about code review or security analysis\'
+         * @summary Create Inline Skill
+         * @param {string} organisation The organisation ID
+         * @param {CreateSkillRequest} createSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createSkill(organisation, createSkillRequest, options) {
+            return localVarFp.createSkill(organisation, createSkillRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Permanently deletes a skill. This will also remove it from any agents that have it assigned.
+         * @summary Delete Skill
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSkill(organisation, skillId, options) {
+            return localVarFp.deleteSkill(organisation, skillId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Permanently deletes all skills in the specified namespace.
+         * @summary Delete Skill Collection
+         * @param {string} organisation The organisation ID
+         * @param {string} namespace Collection namespace
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteSkillCollection(organisation, namespace, options) {
+            return localVarFp.deleteSkillCollection(organisation, namespace, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Retrieves full details of a skill including its content, source information, and metadata.
+         * @summary Get Skill Details
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getSkill(organisation, skillId, options) {
+            return localVarFp.getSkill(organisation, skillId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Imports a skill from an external source like skills.sh registry or GitHub repository.      *      * **Supported Sources:**      * - `skills.sh`: Import from the skills.sh community registry      * - `github`: Import from a GitHub repository (public or private)      *      * **Version Control:**      * - Skills can be pinned to specific versions      * - Use the sync endpoint to update to latest version
+         * @summary Import Skill from External Source
+         * @param {string} organisation The organisation ID
+         * @param {ImportSkillRequest} importSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        importSkill(organisation, importSkillRequest, options) {
+            return localVarFp.importSkill(organisation, importSkillRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Discovers all skill directories under a given path in a GitHub repository      * and imports each as a skill within the specified namespace. Each subdirectory must contain a SKILL.md file.      *      * **Namespace:** Used for grouping and slash-command invocation (e.g., `/superpowers:brainstorming`).      *      * **Idempotent:** If a skill with the same namespace + name already exists, it is updated.
+         * @summary Import Skill Collection from GitHub
+         * @param {string} organisation The organisation ID
+         * @param {ImportSkillCollectionRequest} importSkillCollectionRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        importSkillCollection(organisation, importSkillCollectionRequest, options) {
+            return localVarFp.importSkillCollection(organisation, importSkillCollectionRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Lists distinct namespaces (collections) for the organization, with skill counts and skill names for each collection.
+         * @summary List Skill Collections
+         * @param {string} organisation The organisation ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSkillCollections(organisation, options) {
+            return localVarFp.listSkillCollections(organisation, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Lists all skills available to the organization. Skills are reusable prompts,      * workflows, or instructions that can be assigned to agents or invoked directly.      *      * **Skill Sources:**      * - `inline`: Created directly via the API      * - `skills.sh`: Imported from skills.sh registry      * - `github`: Imported from a GitHub repository      * - `local`: Uploaded from local file
+         * @summary List Organization\'s Skills
+         * @param {string} organisation The organisation ID
+         * @param {string} [tag] Filter skills by tag
+         * @param {string} [namespace] Filter skills by collection namespace (e.g. \&#39;superpowers\&#39;)
+         * @param {number} [limit] Maximum number of skills to return
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listSkills(organisation, tag, namespace, limit, options) {
+            return localVarFp.listSkills(organisation, tag, namespace, limit, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Re-fetches skill content from its original source.      * Only applicable to skills imported from external sources (skills.sh, github).      * Inline skills cannot be synced.      *      * **Version Behavior:**      * - If version is pinned, fetches that specific version      * - If no version specified, fetches latest
+         * @summary Sync Skill from Source
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncSkill(organisation, skillId, options) {
+            return localVarFp.syncSkill(organisation, skillId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Re-syncs all skills in a namespace from their GitHub source. Detects new      * skills added to the repository and flags skills removed from the source. Does NOT auto-delete removed skills.
+         * @summary Sync Skill Collection
+         * @param {string} organisation The organisation ID
+         * @param {string} namespace Collection namespace
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        syncSkillCollection(organisation, namespace, options) {
+            return localVarFp.syncSkillCollection(organisation, namespace, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Updates an existing skill. For imported skills, this updates      * local overrides (name, tags, triggerCondition) but not the source content.      * Use the sync endpoint to update source content.
+         * @summary Update Skill
+         * @param {string} organisation The organisation ID
+         * @param {string} skillId The skill ID
+         * @param {UpdateSkillRequest} updateSkillRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateSkill(organisation, skillId, updateSkillRequest, options) {
+            return localVarFp.updateSkill(organisation, skillId, updateSkillRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+exports.AISkillsApiFactory = AISkillsApiFactory;
+/**
+ * AISkillsApi - object-oriented interface
+ * @export
+ * @class AISkillsApi
+ * @extends {BaseAPI}
+ */
+class AISkillsApi extends base_1.BaseAPI {
+    /**
+     * Creates a new skill with inline content. Use this for custom skills      * that are defined directly in your organization.      *      * **Trigger Conditions:**      * - Natural language description of when to use the skill      * - Used by AI to determine when to suggest or apply the skill      * - Example: \'When the user asks about code review or security analysis\'
+     * @summary Create Inline Skill
+     * @param {string} organisation The organisation ID
+     * @param {CreateSkillRequest} createSkillRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    createSkill(organisation, createSkillRequest, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).createSkill(organisation, createSkillRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Permanently deletes a skill. This will also remove it from any agents that have it assigned.
+     * @summary Delete Skill
+     * @param {string} organisation The organisation ID
+     * @param {string} skillId The skill ID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    deleteSkill(organisation, skillId, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).deleteSkill(organisation, skillId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Permanently deletes all skills in the specified namespace.
+     * @summary Delete Skill Collection
+     * @param {string} organisation The organisation ID
+     * @param {string} namespace Collection namespace
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    deleteSkillCollection(organisation, namespace, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).deleteSkillCollection(organisation, namespace, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Retrieves full details of a skill including its content, source information, and metadata.
+     * @summary Get Skill Details
+     * @param {string} organisation The organisation ID
+     * @param {string} skillId The skill ID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    getSkill(organisation, skillId, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).getSkill(organisation, skillId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Imports a skill from an external source like skills.sh registry or GitHub repository.      *      * **Supported Sources:**      * - `skills.sh`: Import from the skills.sh community registry      * - `github`: Import from a GitHub repository (public or private)      *      * **Version Control:**      * - Skills can be pinned to specific versions      * - Use the sync endpoint to update to latest version
+     * @summary Import Skill from External Source
+     * @param {string} organisation The organisation ID
+     * @param {ImportSkillRequest} importSkillRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    importSkill(organisation, importSkillRequest, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).importSkill(organisation, importSkillRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Discovers all skill directories under a given path in a GitHub repository      * and imports each as a skill within the specified namespace. Each subdirectory must contain a SKILL.md file.      *      * **Namespace:** Used for grouping and slash-command invocation (e.g., `/superpowers:brainstorming`).      *      * **Idempotent:** If a skill with the same namespace + name already exists, it is updated.
+     * @summary Import Skill Collection from GitHub
+     * @param {string} organisation The organisation ID
+     * @param {ImportSkillCollectionRequest} importSkillCollectionRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    importSkillCollection(organisation, importSkillCollectionRequest, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).importSkillCollection(organisation, importSkillCollectionRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Lists distinct namespaces (collections) for the organization, with skill counts and skill names for each collection.
+     * @summary List Skill Collections
+     * @param {string} organisation The organisation ID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    listSkillCollections(organisation, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).listSkillCollections(organisation, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Lists all skills available to the organization. Skills are reusable prompts,      * workflows, or instructions that can be assigned to agents or invoked directly.      *      * **Skill Sources:**      * - `inline`: Created directly via the API      * - `skills.sh`: Imported from skills.sh registry      * - `github`: Imported from a GitHub repository      * - `local`: Uploaded from local file
+     * @summary List Organization\'s Skills
+     * @param {string} organisation The organisation ID
+     * @param {string} [tag] Filter skills by tag
+     * @param {string} [namespace] Filter skills by collection namespace (e.g. \&#39;superpowers\&#39;)
+     * @param {number} [limit] Maximum number of skills to return
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    listSkills(organisation, tag, namespace, limit, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).listSkills(organisation, tag, namespace, limit, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Re-fetches skill content from its original source.      * Only applicable to skills imported from external sources (skills.sh, github).      * Inline skills cannot be synced.      *      * **Version Behavior:**      * - If version is pinned, fetches that specific version      * - If no version specified, fetches latest
+     * @summary Sync Skill from Source
+     * @param {string} organisation The organisation ID
+     * @param {string} skillId The skill ID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    syncSkill(organisation, skillId, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).syncSkill(organisation, skillId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Re-syncs all skills in a namespace from their GitHub source. Detects new      * skills added to the repository and flags skills removed from the source. Does NOT auto-delete removed skills.
+     * @summary Sync Skill Collection
+     * @param {string} organisation The organisation ID
+     * @param {string} namespace Collection namespace
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    syncSkillCollection(organisation, namespace, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).syncSkillCollection(organisation, namespace, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Updates an existing skill. For imported skills, this updates      * local overrides (name, tags, triggerCondition) but not the source content.      * Use the sync endpoint to update source content.
+     * @summary Update Skill
+     * @param {string} organisation The organisation ID
+     * @param {string} skillId The skill ID
+     * @param {UpdateSkillRequest} updateSkillRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AISkillsApi
+     */
+    updateSkill(organisation, skillId, updateSkillRequest, options) {
+        return (0, exports.AISkillsApiFp)(this.configuration).updateSkill(organisation, skillId, updateSkillRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+exports.AISkillsApi = AISkillsApi;
+/**
+ * AITaskManagementApi - axios parameter creator
+ * @export
+ */
+const AITaskManagementApiAxiosParamCreator = function (configuration) {
+    return {
+        /**
+         * Creates a new task for multi-agent coordination and workflow orchestration.      *      * **Key Features:**      * - **Persistent State**: Tasks survive across conversations and sessions      * - **Agent Assignment**: Pre-assign tasks to specific agents      * - **Task Lists**: Group related tasks using taskListId (implicit - no need to create lists first)      * - **Dependencies**: Define task dependencies for workflow orchestration      * - **Metadata**: Store flexible JSON metadata for task-specific data      * - **Progress Tracking**: Track progress from 0.0 to 1.0      *      * **Use Cases:**      * - Break down complex requests into manageable steps      * - Assign work to specialized agents      * - Track long-running operations      * - Coordinate multi-agent workflows
+         * @summary Create a new task
+         * @param {string} organisation The organisation ID
+         * @param {CreateTaskRequest} createTaskRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTask: (organisation_1, createTaskRequest_1, ...args_1) => __awaiter(this, [organisation_1, createTaskRequest_1, ...args_1], void 0, function* (organisation, createTaskRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('createTask', 'organisation', organisation);
+            // verify required parameter 'createTaskRequest' is not null or undefined
+            (0, common_1.assertParamExists)('createTask', 'createTaskRequest', createTaskRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tasks`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(createTaskRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Permanently deletes a task. This action cannot be undone.      *      * **Dependency Protection:**      * By default, deletion is blocked if other tasks depend on this task (TASK_HAS_DEPENDENTS error).      * This prevents breaking workflows.      *      * **Cascade Delete:**      * Use `?cascade=true` to delete the task AND all tasks that depend on it recursively.      * Useful for cleaning up entire dependency chains.      *      * **Examples:**      * - DELETE /tasks/{id} - Deletes task if no dependents, otherwise returns 409 error      * - DELETE /tasks/{id}?cascade=true - Deletes task and all dependent tasks
+         * @summary Delete a task
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {boolean} [cascade] If true, delete task and all dependent tasks recursively
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTask: (organisation_1, taskId_1, cascade_1, ...args_1) => __awaiter(this, [organisation_1, taskId_1, cascade_1, ...args_1], void 0, function* (organisation, taskId, cascade, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('deleteTask', 'organisation', organisation);
+            // verify required parameter 'taskId' is not null or undefined
+            (0, common_1.assertParamExists)('deleteTask', 'taskId', taskId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tasks/{taskId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"taskId"}}`, encodeURIComponent(String(taskId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (cascade !== undefined) {
+                localVarQueryParameter['cascade'] = cascade;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Returns the full dependency graph for all tasks in a task list.      *      * **Use Cases:**      * - Visualize task dependencies in a UI (DAG diagram)      * - Analyze workflow structure and critical paths      * - Find starting tasks (roots) and terminal tasks (leaves)      * - Plan parallel execution by identifying independent task groups      *      * **Response Structure:**      * - `taskCount`: Total number of tasks in the list      * - `roots`: Task IDs with no dependencies (starting points)      * - `leaves`: Task IDs with no dependents (terminal tasks)      * - `graph`: Adjacency list with each task\'s dependencies and dependents
+         * @summary Get dependency graph for a task list
+         * @param {string} organisation The organisation ID
+         * @param {string} taskListId The task list ID to get the dependency graph for
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDependencyGraph: (organisation_1, taskListId_1, ...args_1) => __awaiter(this, [organisation_1, taskListId_1, ...args_1], void 0, function* (organisation, taskListId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getDependencyGraph', 'organisation', organisation);
+            // verify required parameter 'taskListId' is not null or undefined
+            (0, common_1.assertParamExists)('getDependencyGraph', 'taskListId', taskListId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tasks/{taskListId}/dependency-graph`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"taskListId"}}`, encodeURIComponent(String(taskListId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Retrieves detailed information about a specific task including status, progress, dependencies, and results.
+         * @summary Get task details
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTask: (organisation_1, taskId_1, ...args_1) => __awaiter(this, [organisation_1, taskId_1, ...args_1], void 0, function* (organisation, taskId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getTask', 'organisation', organisation);
+            // verify required parameter 'taskId' is not null or undefined
+            (0, common_1.assertParamExists)('getTask', 'taskId', taskId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tasks/{taskId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"taskId"}}`, encodeURIComponent(String(taskId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Lists tasks for an organization with optional filtering. Filters can be combined for powerful queries.      *      * **Filter Examples:**      * - All tasks in a list: ?taskListId=world-1      * - Pending tasks in a list: ?taskListId=world-1&status=pending      * - Tasks assigned to an agent: ?assignedAgentId=agent-code-reviewer      * - Combined: ?taskListId=world-1&status=in_progress&assignedAgentId=agent-1      *      * **Reverse Dependency Lookup:**      * Use `dependsOn` to find tasks that depend on a specific task (waiting for it to complete):      * - ?dependsOn=task-123 - Returns task IDs only (lightweight)      * - ?dependsOn=task-123&includeDetails=true - Returns full task objects      * - ?dependsOn=task-123&status=pending - Pending tasks waiting for task-123      *      * **Ordering:**      * Tasks are returned in reverse chronological order (most recent first).
+         * @summary List tasks with optional filtering
+         * @param {string} organisation The organisation ID
+         * @param {string} [taskListId] Filter tasks by task list ID. Task lists are implicit groupings - any string can be used.
+         * @param {ListTasksStatusEnum} [status] Filter tasks by status
+         * @param {string} [assignedAgentId] Filter tasks by assigned agent ID
+         * @param {number} [limit] Maximum number of tasks to return (default 50, max 100)
+         * @param {string} [dependsOn] Reverse lookup: find tasks that depend on this task ID. Returns tasks waiting for the specified task to complete.
+         * @param {boolean} [includeDetails] When using dependsOn, return full task objects in addition to IDs. Default false (IDs only for lightweight responses).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTasks: (organisation_1, taskListId_1, status_1, assignedAgentId_1, limit_1, dependsOn_1, includeDetails_1, ...args_1) => __awaiter(this, [organisation_1, taskListId_1, status_1, assignedAgentId_1, limit_1, dependsOn_1, includeDetails_1, ...args_1], void 0, function* (organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('listTasks', 'organisation', organisation);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tasks`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (taskListId !== undefined) {
+                localVarQueryParameter['taskListId'] = taskListId;
+            }
+            if (status !== undefined) {
+                localVarQueryParameter['status'] = status;
+            }
+            if (assignedAgentId !== undefined) {
+                localVarQueryParameter['assignedAgentId'] = assignedAgentId;
+            }
+            if (limit !== undefined) {
+                localVarQueryParameter['limit'] = limit;
+            }
+            if (dependsOn !== undefined) {
+                localVarQueryParameter['dependsOn'] = dependsOn;
+            }
+            if (includeDetails !== undefined) {
+                localVarQueryParameter['includeDetails'] = includeDetails;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Updates an existing task. All fields are optional - only provided fields will be updated.      *      * **Status Transitions:**      * - Changing from **pending** to **in_progress** automatically sets startedAt timestamp      * - Changing to **completed**, **failed**, or **cancelled** automatically sets completedAt timestamp      * - Changing to **blocked** automatically sets blockedAt timestamp      * - Changing from **blocked** to **in_progress** or **pending** clears blocked fields      * - Completed tasks get a 30-day TTL for automatic cleanup      *      * **Progress Updates:**      * - Update progress (0.0 to 1.0) to track completion percentage      * - Update progressMessage for human-readable status updates      * - Set result object when task completes successfully      * - Set error string when task fails      * - Set blockedReason and blockedByTaskIds when blocking a task
+         * @summary Update a task
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {UpdateTaskRequest} updateTaskRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTask: (organisation_1, taskId_1, updateTaskRequest_1, ...args_1) => __awaiter(this, [organisation_1, taskId_1, updateTaskRequest_1, ...args_1], void 0, function* (organisation, taskId, updateTaskRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('updateTask', 'organisation', organisation);
+            // verify required parameter 'taskId' is not null or undefined
+            (0, common_1.assertParamExists)('updateTask', 'taskId', taskId);
+            // verify required parameter 'updateTaskRequest' is not null or undefined
+            (0, common_1.assertParamExists)('updateTask', 'updateTaskRequest', updateTaskRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tasks/{taskId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"taskId"}}`, encodeURIComponent(String(taskId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'PUT' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(updateTaskRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+    };
+};
+exports.AITaskManagementApiAxiosParamCreator = AITaskManagementApiAxiosParamCreator;
+/**
+ * AITaskManagementApi - functional programming interface
+ * @export
+ */
+const AITaskManagementApiFp = function (configuration) {
+    const localVarAxiosParamCreator = (0, exports.AITaskManagementApiAxiosParamCreator)(configuration);
+    return {
+        /**
+         * Creates a new task for multi-agent coordination and workflow orchestration.      *      * **Key Features:**      * - **Persistent State**: Tasks survive across conversations and sessions      * - **Agent Assignment**: Pre-assign tasks to specific agents      * - **Task Lists**: Group related tasks using taskListId (implicit - no need to create lists first)      * - **Dependencies**: Define task dependencies for workflow orchestration      * - **Metadata**: Store flexible JSON metadata for task-specific data      * - **Progress Tracking**: Track progress from 0.0 to 1.0      *      * **Use Cases:**      * - Break down complex requests into manageable steps      * - Assign work to specialized agents      * - Track long-running operations      * - Coordinate multi-agent workflows
+         * @summary Create a new task
+         * @param {string} organisation The organisation ID
+         * @param {CreateTaskRequest} createTaskRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTask(organisation, createTaskRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.createTask(organisation, createTaskRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AITaskManagementApi.createTask']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Permanently deletes a task. This action cannot be undone.      *      * **Dependency Protection:**      * By default, deletion is blocked if other tasks depend on this task (TASK_HAS_DEPENDENTS error).      * This prevents breaking workflows.      *      * **Cascade Delete:**      * Use `?cascade=true` to delete the task AND all tasks that depend on it recursively.      * Useful for cleaning up entire dependency chains.      *      * **Examples:**      * - DELETE /tasks/{id} - Deletes task if no dependents, otherwise returns 409 error      * - DELETE /tasks/{id}?cascade=true - Deletes task and all dependent tasks
+         * @summary Delete a task
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {boolean} [cascade] If true, delete task and all dependent tasks recursively
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTask(organisation, taskId, cascade, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.deleteTask(organisation, taskId, cascade, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AITaskManagementApi.deleteTask']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Returns the full dependency graph for all tasks in a task list.      *      * **Use Cases:**      * - Visualize task dependencies in a UI (DAG diagram)      * - Analyze workflow structure and critical paths      * - Find starting tasks (roots) and terminal tasks (leaves)      * - Plan parallel execution by identifying independent task groups      *      * **Response Structure:**      * - `taskCount`: Total number of tasks in the list      * - `roots`: Task IDs with no dependencies (starting points)      * - `leaves`: Task IDs with no dependents (terminal tasks)      * - `graph`: Adjacency list with each task\'s dependencies and dependents
+         * @summary Get dependency graph for a task list
+         * @param {string} organisation The organisation ID
+         * @param {string} taskListId The task list ID to get the dependency graph for
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDependencyGraph(organisation, taskListId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getDependencyGraph(organisation, taskListId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AITaskManagementApi.getDependencyGraph']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Retrieves detailed information about a specific task including status, progress, dependencies, and results.
+         * @summary Get task details
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTask(organisation, taskId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getTask(organisation, taskId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AITaskManagementApi.getTask']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Lists tasks for an organization with optional filtering. Filters can be combined for powerful queries.      *      * **Filter Examples:**      * - All tasks in a list: ?taskListId=world-1      * - Pending tasks in a list: ?taskListId=world-1&status=pending      * - Tasks assigned to an agent: ?assignedAgentId=agent-code-reviewer      * - Combined: ?taskListId=world-1&status=in_progress&assignedAgentId=agent-1      *      * **Reverse Dependency Lookup:**      * Use `dependsOn` to find tasks that depend on a specific task (waiting for it to complete):      * - ?dependsOn=task-123 - Returns task IDs only (lightweight)      * - ?dependsOn=task-123&includeDetails=true - Returns full task objects      * - ?dependsOn=task-123&status=pending - Pending tasks waiting for task-123      *      * **Ordering:**      * Tasks are returned in reverse chronological order (most recent first).
+         * @summary List tasks with optional filtering
+         * @param {string} organisation The organisation ID
+         * @param {string} [taskListId] Filter tasks by task list ID. Task lists are implicit groupings - any string can be used.
+         * @param {ListTasksStatusEnum} [status] Filter tasks by status
+         * @param {string} [assignedAgentId] Filter tasks by assigned agent ID
+         * @param {number} [limit] Maximum number of tasks to return (default 50, max 100)
+         * @param {string} [dependsOn] Reverse lookup: find tasks that depend on this task ID. Returns tasks waiting for the specified task to complete.
+         * @param {boolean} [includeDetails] When using dependsOn, return full task objects in addition to IDs. Default false (IDs only for lightweight responses).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTasks(organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.listTasks(organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AITaskManagementApi.listTasks']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Updates an existing task. All fields are optional - only provided fields will be updated.      *      * **Status Transitions:**      * - Changing from **pending** to **in_progress** automatically sets startedAt timestamp      * - Changing to **completed**, **failed**, or **cancelled** automatically sets completedAt timestamp      * - Changing to **blocked** automatically sets blockedAt timestamp      * - Changing from **blocked** to **in_progress** or **pending** clears blocked fields      * - Completed tasks get a 30-day TTL for automatic cleanup      *      * **Progress Updates:**      * - Update progress (0.0 to 1.0) to track completion percentage      * - Update progressMessage for human-readable status updates      * - Set result object when task completes successfully      * - Set error string when task fails      * - Set blockedReason and blockedByTaskIds when blocking a task
+         * @summary Update a task
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {UpdateTaskRequest} updateTaskRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTask(organisation, taskId, updateTaskRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.updateTask(organisation, taskId, updateTaskRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AITaskManagementApi.updateTask']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+    };
+};
+exports.AITaskManagementApiFp = AITaskManagementApiFp;
+/**
+ * AITaskManagementApi - factory interface
+ * @export
+ */
+const AITaskManagementApiFactory = function (configuration, basePath, axios) {
+    const localVarFp = (0, exports.AITaskManagementApiFp)(configuration);
+    return {
+        /**
+         * Creates a new task for multi-agent coordination and workflow orchestration.      *      * **Key Features:**      * - **Persistent State**: Tasks survive across conversations and sessions      * - **Agent Assignment**: Pre-assign tasks to specific agents      * - **Task Lists**: Group related tasks using taskListId (implicit - no need to create lists first)      * - **Dependencies**: Define task dependencies for workflow orchestration      * - **Metadata**: Store flexible JSON metadata for task-specific data      * - **Progress Tracking**: Track progress from 0.0 to 1.0      *      * **Use Cases:**      * - Break down complex requests into manageable steps      * - Assign work to specialized agents      * - Track long-running operations      * - Coordinate multi-agent workflows
+         * @summary Create a new task
+         * @param {string} organisation The organisation ID
+         * @param {CreateTaskRequest} createTaskRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        createTask(organisation, createTaskRequest, options) {
+            return localVarFp.createTask(organisation, createTaskRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Permanently deletes a task. This action cannot be undone.      *      * **Dependency Protection:**      * By default, deletion is blocked if other tasks depend on this task (TASK_HAS_DEPENDENTS error).      * This prevents breaking workflows.      *      * **Cascade Delete:**      * Use `?cascade=true` to delete the task AND all tasks that depend on it recursively.      * Useful for cleaning up entire dependency chains.      *      * **Examples:**      * - DELETE /tasks/{id} - Deletes task if no dependents, otherwise returns 409 error      * - DELETE /tasks/{id}?cascade=true - Deletes task and all dependent tasks
+         * @summary Delete a task
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {boolean} [cascade] If true, delete task and all dependent tasks recursively
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteTask(organisation, taskId, cascade, options) {
+            return localVarFp.deleteTask(organisation, taskId, cascade, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Returns the full dependency graph for all tasks in a task list.      *      * **Use Cases:**      * - Visualize task dependencies in a UI (DAG diagram)      * - Analyze workflow structure and critical paths      * - Find starting tasks (roots) and terminal tasks (leaves)      * - Plan parallel execution by identifying independent task groups      *      * **Response Structure:**      * - `taskCount`: Total number of tasks in the list      * - `roots`: Task IDs with no dependencies (starting points)      * - `leaves`: Task IDs with no dependents (terminal tasks)      * - `graph`: Adjacency list with each task\'s dependencies and dependents
+         * @summary Get dependency graph for a task list
+         * @param {string} organisation The organisation ID
+         * @param {string} taskListId The task list ID to get the dependency graph for
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDependencyGraph(organisation, taskListId, options) {
+            return localVarFp.getDependencyGraph(organisation, taskListId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Retrieves detailed information about a specific task including status, progress, dependencies, and results.
+         * @summary Get task details
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getTask(organisation, taskId, options) {
+            return localVarFp.getTask(organisation, taskId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Lists tasks for an organization with optional filtering. Filters can be combined for powerful queries.      *      * **Filter Examples:**      * - All tasks in a list: ?taskListId=world-1      * - Pending tasks in a list: ?taskListId=world-1&status=pending      * - Tasks assigned to an agent: ?assignedAgentId=agent-code-reviewer      * - Combined: ?taskListId=world-1&status=in_progress&assignedAgentId=agent-1      *      * **Reverse Dependency Lookup:**      * Use `dependsOn` to find tasks that depend on a specific task (waiting for it to complete):      * - ?dependsOn=task-123 - Returns task IDs only (lightweight)      * - ?dependsOn=task-123&includeDetails=true - Returns full task objects      * - ?dependsOn=task-123&status=pending - Pending tasks waiting for task-123      *      * **Ordering:**      * Tasks are returned in reverse chronological order (most recent first).
+         * @summary List tasks with optional filtering
+         * @param {string} organisation The organisation ID
+         * @param {string} [taskListId] Filter tasks by task list ID. Task lists are implicit groupings - any string can be used.
+         * @param {ListTasksStatusEnum} [status] Filter tasks by status
+         * @param {string} [assignedAgentId] Filter tasks by assigned agent ID
+         * @param {number} [limit] Maximum number of tasks to return (default 50, max 100)
+         * @param {string} [dependsOn] Reverse lookup: find tasks that depend on this task ID. Returns tasks waiting for the specified task to complete.
+         * @param {boolean} [includeDetails] When using dependsOn, return full task objects in addition to IDs. Default false (IDs only for lightweight responses).
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        listTasks(organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options) {
+            return localVarFp.listTasks(organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Updates an existing task. All fields are optional - only provided fields will be updated.      *      * **Status Transitions:**      * - Changing from **pending** to **in_progress** automatically sets startedAt timestamp      * - Changing to **completed**, **failed**, or **cancelled** automatically sets completedAt timestamp      * - Changing to **blocked** automatically sets blockedAt timestamp      * - Changing from **blocked** to **in_progress** or **pending** clears blocked fields      * - Completed tasks get a 30-day TTL for automatic cleanup      *      * **Progress Updates:**      * - Update progress (0.0 to 1.0) to track completion percentage      * - Update progressMessage for human-readable status updates      * - Set result object when task completes successfully      * - Set error string when task fails      * - Set blockedReason and blockedByTaskIds when blocking a task
+         * @summary Update a task
+         * @param {string} organisation The organisation ID
+         * @param {string} taskId The task UUID
+         * @param {UpdateTaskRequest} updateTaskRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        updateTask(organisation, taskId, updateTaskRequest, options) {
+            return localVarFp.updateTask(organisation, taskId, updateTaskRequest, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+exports.AITaskManagementApiFactory = AITaskManagementApiFactory;
+/**
+ * AITaskManagementApi - object-oriented interface
+ * @export
+ * @class AITaskManagementApi
+ * @extends {BaseAPI}
+ */
+class AITaskManagementApi extends base_1.BaseAPI {
+    /**
+     * Creates a new task for multi-agent coordination and workflow orchestration.      *      * **Key Features:**      * - **Persistent State**: Tasks survive across conversations and sessions      * - **Agent Assignment**: Pre-assign tasks to specific agents      * - **Task Lists**: Group related tasks using taskListId (implicit - no need to create lists first)      * - **Dependencies**: Define task dependencies for workflow orchestration      * - **Metadata**: Store flexible JSON metadata for task-specific data      * - **Progress Tracking**: Track progress from 0.0 to 1.0      *      * **Use Cases:**      * - Break down complex requests into manageable steps      * - Assign work to specialized agents      * - Track long-running operations      * - Coordinate multi-agent workflows
+     * @summary Create a new task
+     * @param {string} organisation The organisation ID
+     * @param {CreateTaskRequest} createTaskRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AITaskManagementApi
+     */
+    createTask(organisation, createTaskRequest, options) {
+        return (0, exports.AITaskManagementApiFp)(this.configuration).createTask(organisation, createTaskRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Permanently deletes a task. This action cannot be undone.      *      * **Dependency Protection:**      * By default, deletion is blocked if other tasks depend on this task (TASK_HAS_DEPENDENTS error).      * This prevents breaking workflows.      *      * **Cascade Delete:**      * Use `?cascade=true` to delete the task AND all tasks that depend on it recursively.      * Useful for cleaning up entire dependency chains.      *      * **Examples:**      * - DELETE /tasks/{id} - Deletes task if no dependents, otherwise returns 409 error      * - DELETE /tasks/{id}?cascade=true - Deletes task and all dependent tasks
+     * @summary Delete a task
+     * @param {string} organisation The organisation ID
+     * @param {string} taskId The task UUID
+     * @param {boolean} [cascade] If true, delete task and all dependent tasks recursively
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AITaskManagementApi
+     */
+    deleteTask(organisation, taskId, cascade, options) {
+        return (0, exports.AITaskManagementApiFp)(this.configuration).deleteTask(organisation, taskId, cascade, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Returns the full dependency graph for all tasks in a task list.      *      * **Use Cases:**      * - Visualize task dependencies in a UI (DAG diagram)      * - Analyze workflow structure and critical paths      * - Find starting tasks (roots) and terminal tasks (leaves)      * - Plan parallel execution by identifying independent task groups      *      * **Response Structure:**      * - `taskCount`: Total number of tasks in the list      * - `roots`: Task IDs with no dependencies (starting points)      * - `leaves`: Task IDs with no dependents (terminal tasks)      * - `graph`: Adjacency list with each task\'s dependencies and dependents
+     * @summary Get dependency graph for a task list
+     * @param {string} organisation The organisation ID
+     * @param {string} taskListId The task list ID to get the dependency graph for
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AITaskManagementApi
+     */
+    getDependencyGraph(organisation, taskListId, options) {
+        return (0, exports.AITaskManagementApiFp)(this.configuration).getDependencyGraph(organisation, taskListId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Retrieves detailed information about a specific task including status, progress, dependencies, and results.
+     * @summary Get task details
+     * @param {string} organisation The organisation ID
+     * @param {string} taskId The task UUID
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AITaskManagementApi
+     */
+    getTask(organisation, taskId, options) {
+        return (0, exports.AITaskManagementApiFp)(this.configuration).getTask(organisation, taskId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Lists tasks for an organization with optional filtering. Filters can be combined for powerful queries.      *      * **Filter Examples:**      * - All tasks in a list: ?taskListId=world-1      * - Pending tasks in a list: ?taskListId=world-1&status=pending      * - Tasks assigned to an agent: ?assignedAgentId=agent-code-reviewer      * - Combined: ?taskListId=world-1&status=in_progress&assignedAgentId=agent-1      *      * **Reverse Dependency Lookup:**      * Use `dependsOn` to find tasks that depend on a specific task (waiting for it to complete):      * - ?dependsOn=task-123 - Returns task IDs only (lightweight)      * - ?dependsOn=task-123&includeDetails=true - Returns full task objects      * - ?dependsOn=task-123&status=pending - Pending tasks waiting for task-123      *      * **Ordering:**      * Tasks are returned in reverse chronological order (most recent first).
+     * @summary List tasks with optional filtering
+     * @param {string} organisation The organisation ID
+     * @param {string} [taskListId] Filter tasks by task list ID. Task lists are implicit groupings - any string can be used.
+     * @param {ListTasksStatusEnum} [status] Filter tasks by status
+     * @param {string} [assignedAgentId] Filter tasks by assigned agent ID
+     * @param {number} [limit] Maximum number of tasks to return (default 50, max 100)
+     * @param {string} [dependsOn] Reverse lookup: find tasks that depend on this task ID. Returns tasks waiting for the specified task to complete.
+     * @param {boolean} [includeDetails] When using dependsOn, return full task objects in addition to IDs. Default false (IDs only for lightweight responses).
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AITaskManagementApi
+     */
+    listTasks(organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options) {
+        return (0, exports.AITaskManagementApiFp)(this.configuration).listTasks(organisation, taskListId, status, assignedAgentId, limit, dependsOn, includeDetails, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Updates an existing task. All fields are optional - only provided fields will be updated.      *      * **Status Transitions:**      * - Changing from **pending** to **in_progress** automatically sets startedAt timestamp      * - Changing to **completed**, **failed**, or **cancelled** automatically sets completedAt timestamp      * - Changing to **blocked** automatically sets blockedAt timestamp      * - Changing from **blocked** to **in_progress** or **pending** clears blocked fields      * - Completed tasks get a 30-day TTL for automatic cleanup      *      * **Progress Updates:**      * - Update progress (0.0 to 1.0) to track completion percentage      * - Update progressMessage for human-readable status updates      * - Set result object when task completes successfully      * - Set error string when task fails      * - Set blockedReason and blockedByTaskIds when blocking a task
+     * @summary Update a task
+     * @param {string} organisation The organisation ID
+     * @param {string} taskId The task UUID
+     * @param {UpdateTaskRequest} updateTaskRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AITaskManagementApi
+     */
+    updateTask(organisation, taskId, updateTaskRequest, options) {
+        return (0, exports.AITaskManagementApiFp)(this.configuration).updateTask(organisation, taskId, updateTaskRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+exports.AITaskManagementApi = AITaskManagementApi;
+/**
+ * @export
+ */
+exports.ListTasksStatusEnum = {
+    Pending: 'pending',
+    InProgress: 'in_progress',
+    Completed: 'completed',
+    Failed: 'failed',
+    Cancelled: 'cancelled',
+    Blocked: 'blocked'
+};
+/**
  * AIToolsApi - axios parameter creator
  * @export
  */
 const AIToolsApiAxiosParamCreator = function (configuration) {
     return {
+        /**
+         * Retrieves the status and synthesized result of a multi-tool async execution orchestration.      *      * **Note:** This endpoint is for async tool execution polling (`/tools/orchestrations`).      * For durable batch processing orchestrations, see `GET /orchestrations` endpoints.      *      * **Orchestration Pattern:**      * When the AI requests multiple async tools simultaneously, an orchestration is created      * to track all tool executions and synthesize their results into a single coherent response.      *      * **Flow:**      * 1. AI requests multiple async tools (e.g., image generation + web search)      * 2. Chat API creates orchestration and returns orchestrationId      * 3. Tool Orchestrator Lambda polls all async tools      * 4. When all tools complete, Orchestrator synthesizes results using AI      * 5. Client polls this endpoint and receives final synthesized response      *      * **Status Values:**      * - pending: Orchestration created, tools not yet started      * - polling: Orchestrator is actively polling async tools      * - synthesizing: All tools complete, AI is synthesizing response      * - complete: Orchestration finished, synthesizedResponse available      * - failed: Orchestration failed, error available      *      * **Polling Recommendations:**      * - Poll every 2 seconds      * - Maximum poll time: 10 minutes      * - Orchestrator handles tool polling internally      *      * **Benefits over individual polling:**      * - Single poll endpoint for multiple async tools      * - AI synthesizes all results into coherent response      * - Answers the original user question, not just tool summaries
+         * @summary Get Tool Orchestration Status (Async Tool Polling)
+         * @param {string} organisation The organisation ID
+         * @param {string} orchestrationId Orchestration identifier for aggregated async tool executions
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAIOrchestrationStatus: (organisation_1, orchestrationId_1, ...args_1) => __awaiter(this, [organisation_1, orchestrationId_1, ...args_1], void 0, function* (organisation, orchestrationId, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('getAIOrchestrationStatus', 'organisation', organisation);
+            // verify required parameter 'orchestrationId' is not null or undefined
+            (0, common_1.assertParamExists)('getAIOrchestrationStatus', 'orchestrationId', orchestrationId);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/tools/orchestrations/{orchestrationId}`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"orchestrationId"}}`, encodeURIComponent(String(orchestrationId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
         /**
          * Retrieves the status and result of an async tool execution. Used for polling long-running tools like image generation.      *      * **Async Tool Execution Pattern:**      * This endpoint enables a polling pattern for long-running tools that would otherwise hit API Gateway\'s 30-second timeout.      *      * **Flow:**      * 1. AI requests tool use (e.g., `generate_image`)      * 2. Chat API returns `toolUse` with execution tracking info      * 3. Client starts polling this endpoint with the `executionId`      * 4. When `status === \'complete\'`, retrieve `result` and send back to AI      * 5. AI incorporates result into final response      *      * **Status Values:**      * - `pending`: Tool execution queued, not yet started      * - `running`: Tool is currently executing      * - `complete`: Tool execution finished successfully, `result` available      * - `failed`: Tool execution failed, `error` available      *      * **Polling Recommendations:**      * - Poll every 2-3 seconds for image generation      * - Exponential backoff for other tools (start 1s, max 5s)      * - Stop polling after 5 minutes (consider failed)      * - Auto-cleanup after 24 hours (TTL)      *      * **Use Cases:**      * - Image generation (10-15s typical runtime)      * - Video processing      * - Large file uploads/downloads      * - Complex database queries      * - External API calls with high latency
          * @summary Get async tool execution status and result
@@ -8950,6 +8413,23 @@ const AIToolsApiFp = function (configuration) {
     const localVarAxiosParamCreator = (0, exports.AIToolsApiAxiosParamCreator)(configuration);
     return {
         /**
+         * Retrieves the status and synthesized result of a multi-tool async execution orchestration.      *      * **Note:** This endpoint is for async tool execution polling (`/tools/orchestrations`).      * For durable batch processing orchestrations, see `GET /orchestrations` endpoints.      *      * **Orchestration Pattern:**      * When the AI requests multiple async tools simultaneously, an orchestration is created      * to track all tool executions and synthesize their results into a single coherent response.      *      * **Flow:**      * 1. AI requests multiple async tools (e.g., image generation + web search)      * 2. Chat API creates orchestration and returns orchestrationId      * 3. Tool Orchestrator Lambda polls all async tools      * 4. When all tools complete, Orchestrator synthesizes results using AI      * 5. Client polls this endpoint and receives final synthesized response      *      * **Status Values:**      * - pending: Orchestration created, tools not yet started      * - polling: Orchestrator is actively polling async tools      * - synthesizing: All tools complete, AI is synthesizing response      * - complete: Orchestration finished, synthesizedResponse available      * - failed: Orchestration failed, error available      *      * **Polling Recommendations:**      * - Poll every 2 seconds      * - Maximum poll time: 10 minutes      * - Orchestrator handles tool polling internally      *      * **Benefits over individual polling:**      * - Single poll endpoint for multiple async tools      * - AI synthesizes all results into coherent response      * - Answers the original user question, not just tool summaries
+         * @summary Get Tool Orchestration Status (Async Tool Polling)
+         * @param {string} organisation The organisation ID
+         * @param {string} orchestrationId Orchestration identifier for aggregated async tool executions
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAIOrchestrationStatus(organisation, orchestrationId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getAIOrchestrationStatus(organisation, orchestrationId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIToolsApi.getAIOrchestrationStatus']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
          * Retrieves the status and result of an async tool execution. Used for polling long-running tools like image generation.      *      * **Async Tool Execution Pattern:**      * This endpoint enables a polling pattern for long-running tools that would otherwise hit API Gateway\'s 30-second timeout.      *      * **Flow:**      * 1. AI requests tool use (e.g., `generate_image`)      * 2. Chat API returns `toolUse` with execution tracking info      * 3. Client starts polling this endpoint with the `executionId`      * 4. When `status === \'complete\'`, retrieve `result` and send back to AI      * 5. AI incorporates result into final response      *      * **Status Values:**      * - `pending`: Tool execution queued, not yet started      * - `running`: Tool is currently executing      * - `complete`: Tool execution finished successfully, `result` available      * - `failed`: Tool execution failed, `error` available      *      * **Polling Recommendations:**      * - Poll every 2-3 seconds for image generation      * - Exponential backoff for other tools (start 1s, max 5s)      * - Stop polling after 5 minutes (consider failed)      * - Auto-cleanup after 24 hours (TTL)      *      * **Use Cases:**      * - Image generation (10-15s typical runtime)      * - Video processing      * - Large file uploads/downloads      * - Complex database queries      * - External API calls with high latency
          * @summary Get async tool execution status and result
          * @param {string} organisation The organisation ID
@@ -9027,6 +8507,17 @@ const AIToolsApiFactory = function (configuration, basePath, axios) {
     const localVarFp = (0, exports.AIToolsApiFp)(configuration);
     return {
         /**
+         * Retrieves the status and synthesized result of a multi-tool async execution orchestration.      *      * **Note:** This endpoint is for async tool execution polling (`/tools/orchestrations`).      * For durable batch processing orchestrations, see `GET /orchestrations` endpoints.      *      * **Orchestration Pattern:**      * When the AI requests multiple async tools simultaneously, an orchestration is created      * to track all tool executions and synthesize their results into a single coherent response.      *      * **Flow:**      * 1. AI requests multiple async tools (e.g., image generation + web search)      * 2. Chat API creates orchestration and returns orchestrationId      * 3. Tool Orchestrator Lambda polls all async tools      * 4. When all tools complete, Orchestrator synthesizes results using AI      * 5. Client polls this endpoint and receives final synthesized response      *      * **Status Values:**      * - pending: Orchestration created, tools not yet started      * - polling: Orchestrator is actively polling async tools      * - synthesizing: All tools complete, AI is synthesizing response      * - complete: Orchestration finished, synthesizedResponse available      * - failed: Orchestration failed, error available      *      * **Polling Recommendations:**      * - Poll every 2 seconds      * - Maximum poll time: 10 minutes      * - Orchestrator handles tool polling internally      *      * **Benefits over individual polling:**      * - Single poll endpoint for multiple async tools      * - AI synthesizes all results into coherent response      * - Answers the original user question, not just tool summaries
+         * @summary Get Tool Orchestration Status (Async Tool Polling)
+         * @param {string} organisation The organisation ID
+         * @param {string} orchestrationId Orchestration identifier for aggregated async tool executions
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getAIOrchestrationStatus(organisation, orchestrationId, options) {
+            return localVarFp.getAIOrchestrationStatus(organisation, orchestrationId, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Retrieves the status and result of an async tool execution. Used for polling long-running tools like image generation.      *      * **Async Tool Execution Pattern:**      * This endpoint enables a polling pattern for long-running tools that would otherwise hit API Gateway\'s 30-second timeout.      *      * **Flow:**      * 1. AI requests tool use (e.g., `generate_image`)      * 2. Chat API returns `toolUse` with execution tracking info      * 3. Client starts polling this endpoint with the `executionId`      * 4. When `status === \'complete\'`, retrieve `result` and send back to AI      * 5. AI incorporates result into final response      *      * **Status Values:**      * - `pending`: Tool execution queued, not yet started      * - `running`: Tool is currently executing      * - `complete`: Tool execution finished successfully, `result` available      * - `failed`: Tool execution failed, `error` available      *      * **Polling Recommendations:**      * - Poll every 2-3 seconds for image generation      * - Exponential backoff for other tools (start 1s, max 5s)      * - Stop polling after 5 minutes (consider failed)      * - Auto-cleanup after 24 hours (TTL)      *      * **Use Cases:**      * - Image generation (10-15s typical runtime)      * - Video processing      * - Large file uploads/downloads      * - Complex database queries      * - External API calls with high latency
          * @summary Get async tool execution status and result
          * @param {string} organisation The organisation ID
@@ -9079,6 +8570,18 @@ exports.AIToolsApiFactory = AIToolsApiFactory;
  * @extends {BaseAPI}
  */
 class AIToolsApi extends base_1.BaseAPI {
+    /**
+     * Retrieves the status and synthesized result of a multi-tool async execution orchestration.      *      * **Note:** This endpoint is for async tool execution polling (`/tools/orchestrations`).      * For durable batch processing orchestrations, see `GET /orchestrations` endpoints.      *      * **Orchestration Pattern:**      * When the AI requests multiple async tools simultaneously, an orchestration is created      * to track all tool executions and synthesize their results into a single coherent response.      *      * **Flow:**      * 1. AI requests multiple async tools (e.g., image generation + web search)      * 2. Chat API creates orchestration and returns orchestrationId      * 3. Tool Orchestrator Lambda polls all async tools      * 4. When all tools complete, Orchestrator synthesizes results using AI      * 5. Client polls this endpoint and receives final synthesized response      *      * **Status Values:**      * - pending: Orchestration created, tools not yet started      * - polling: Orchestrator is actively polling async tools      * - synthesizing: All tools complete, AI is synthesizing response      * - complete: Orchestration finished, synthesizedResponse available      * - failed: Orchestration failed, error available      *      * **Polling Recommendations:**      * - Poll every 2 seconds      * - Maximum poll time: 10 minutes      * - Orchestrator handles tool polling internally      *      * **Benefits over individual polling:**      * - Single poll endpoint for multiple async tools      * - AI synthesizes all results into coherent response      * - Answers the original user question, not just tool summaries
+     * @summary Get Tool Orchestration Status (Async Tool Polling)
+     * @param {string} organisation The organisation ID
+     * @param {string} orchestrationId Orchestration identifier for aggregated async tool executions
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIToolsApi
+     */
+    getAIOrchestrationStatus(organisation, orchestrationId, options) {
+        return (0, exports.AIToolsApiFp)(this.configuration).getAIOrchestrationStatus(organisation, orchestrationId, options).then((request) => request(this.axios, this.basePath));
+    }
     /**
      * Retrieves the status and result of an async tool execution. Used for polling long-running tools like image generation.      *      * **Async Tool Execution Pattern:**      * This endpoint enables a polling pattern for long-running tools that would otherwise hit API Gateway\'s 30-second timeout.      *      * **Flow:**      * 1. AI requests tool use (e.g., `generate_image`)      * 2. Chat API returns `toolUse` with execution tracking info      * 3. Client starts polling this endpoint with the `executionId`      * 4. When `status === \'complete\'`, retrieve `result` and send back to AI      * 5. AI incorporates result into final response      *      * **Status Values:**      * - `pending`: Tool execution queued, not yet started      * - `running`: Tool is currently executing      * - `complete`: Tool execution finished successfully, `result` available      * - `failed`: Tool execution failed, `error` available      *      * **Polling Recommendations:**      * - Poll every 2-3 seconds for image generation      * - Exponential backoff for other tools (start 1s, max 5s)      * - Stop polling after 5 minutes (consider failed)      * - Auto-cleanup after 24 hours (TTL)      *      * **Use Cases:**      * - Image generation (10-15s typical runtime)      * - Video processing      * - Large file uploads/downloads      * - Complex database queries      * - External API calls with high latency
      * @summary Get async tool execution status and result
@@ -9217,6 +8720,47 @@ const AIVectorDatabaseApiAxiosParamCreator = function (configuration) {
             };
         }),
         /**
+         * Delete documents from a collection. Supports three deletion modes:      *      * 1. **Purge All** - Set `purgeAll: true` to delete ALL documents in the collection      *      * 2. **By Document IDs** - Provide `documentIds` array with specific document UUIDs      *      * 3. **By Metadata** - Provide `metadata` object with `field` and `values` to delete documents where the metadata field matches any of the values      *      * **Drupal Integration:**      * When using with Drupal AI Search, use metadata deletion with:      * - `field: \'drupal_entity_id\'` to delete all chunks for specific entities      * - `field: \'drupal_long_id\'` to delete specific chunks
+         * @summary Delete Documents from Collection
+         * @param {string} organisation Organisation machine name
+         * @param {string} collectionId Collection UUID
+         * @param {DeleteVectorDocumentsRequest} deleteVectorDocumentsRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteVectorDocuments: (organisation_1, collectionId_1, deleteVectorDocumentsRequest_1, ...args_1) => __awaiter(this, [organisation_1, collectionId_1, deleteVectorDocumentsRequest_1, ...args_1], void 0, function* (organisation, collectionId, deleteVectorDocumentsRequest, options = {}) {
+            // verify required parameter 'organisation' is not null or undefined
+            (0, common_1.assertParamExists)('deleteVectorDocuments', 'organisation', organisation);
+            // verify required parameter 'collectionId' is not null or undefined
+            (0, common_1.assertParamExists)('deleteVectorDocuments', 'collectionId', collectionId);
+            // verify required parameter 'deleteVectorDocumentsRequest' is not null or undefined
+            (0, common_1.assertParamExists)('deleteVectorDocuments', 'deleteVectorDocumentsRequest', deleteVectorDocumentsRequest);
+            const localVarPath = `/api/v3/organizations/{organisation}/ai/vector-db/collections/{collectionId}/documents`
+                .replace(`{${"organisation"}}`, encodeURIComponent(String(organisation)))
+                .replace(`{${"collectionId"}}`, encodeURIComponent(String(collectionId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(deleteVectorDocumentsRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
          * Get detailed information about a specific vector database collection.
          * @summary Get Collection Details
          * @param {string} organisation The organisation ID
@@ -9285,7 +8829,7 @@ const AIVectorDatabaseApiAxiosParamCreator = function (configuration) {
             };
         }),
         /**
-         * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases
+         * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Three Search Modes:**      *      * 1. **Text Query** - Provide `query` string, server generates embedding      *    - Query text is embedded using the collection\'s embedding model      *    - Embeddings are cached for repeated queries      *      * 2. **Vector Query** - Provide pre-computed `vector` array      *    - Skip embedding generation (faster)      *    - Useful when you\'ve already embedded the query elsewhere      *    - Vector dimension must match collection (e.g., 1024 for Titan v2)      *      * 3. **Metadata List** - Set `listByMetadata: true` with `filter`      *    - Skip semantic search entirely      *    - Return all documents matching the filter      *    - Supports cursor-based pagination for large datasets      *    - Results ordered by sortBy/sortOrder (default: created_at DESC)      *      * **Filtering:**      * - `filter.exact`: Exact match on metadata fields (AND logic)      * - `filter.contains`: Array contains filter for tags (ANY match)      * - Filters can be combined with semantic search or used alone with listByMetadata      *      * **Pagination (listByMetadata mode only):**      * - Use `cursor` from previous response\'s `nextCursor` to get next page      * - Uses keyset pagination for efficient traversal of large datasets      * - Control sort with `sortBy` and `sortOrder`      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases      * - List all artifacts by building/worker/tag
          * @summary Semantic Search Query
          * @param {string} organisation The organisation ID
          * @param {string} collectionId The collection ID
@@ -9411,6 +8955,24 @@ const AIVectorDatabaseApiFp = function (configuration) {
             });
         },
         /**
+         * Delete documents from a collection. Supports three deletion modes:      *      * 1. **Purge All** - Set `purgeAll: true` to delete ALL documents in the collection      *      * 2. **By Document IDs** - Provide `documentIds` array with specific document UUIDs      *      * 3. **By Metadata** - Provide `metadata` object with `field` and `values` to delete documents where the metadata field matches any of the values      *      * **Drupal Integration:**      * When using with Drupal AI Search, use metadata deletion with:      * - `field: \'drupal_entity_id\'` to delete all chunks for specific entities      * - `field: \'drupal_long_id\'` to delete specific chunks
+         * @summary Delete Documents from Collection
+         * @param {string} organisation Organisation machine name
+         * @param {string} collectionId Collection UUID
+         * @param {DeleteVectorDocumentsRequest} deleteVectorDocumentsRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteVectorDocuments(organisation, collectionId, deleteVectorDocumentsRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.deleteVectorDocuments(organisation, collectionId, deleteVectorDocumentsRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['AIVectorDatabaseApi.deleteVectorDocuments']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
          * Get detailed information about a specific vector database collection.
          * @summary Get Collection Details
          * @param {string} organisation The organisation ID
@@ -9444,7 +9006,7 @@ const AIVectorDatabaseApiFp = function (configuration) {
             });
         },
         /**
-         * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases
+         * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Three Search Modes:**      *      * 1. **Text Query** - Provide `query` string, server generates embedding      *    - Query text is embedded using the collection\'s embedding model      *    - Embeddings are cached for repeated queries      *      * 2. **Vector Query** - Provide pre-computed `vector` array      *    - Skip embedding generation (faster)      *    - Useful when you\'ve already embedded the query elsewhere      *    - Vector dimension must match collection (e.g., 1024 for Titan v2)      *      * 3. **Metadata List** - Set `listByMetadata: true` with `filter`      *    - Skip semantic search entirely      *    - Return all documents matching the filter      *    - Supports cursor-based pagination for large datasets      *    - Results ordered by sortBy/sortOrder (default: created_at DESC)      *      * **Filtering:**      * - `filter.exact`: Exact match on metadata fields (AND logic)      * - `filter.contains`: Array contains filter for tags (ANY match)      * - Filters can be combined with semantic search or used alone with listByMetadata      *      * **Pagination (listByMetadata mode only):**      * - Use `cursor` from previous response\'s `nextCursor` to get next page      * - Uses keyset pagination for efficient traversal of large datasets      * - Control sort with `sortBy` and `sortOrder`      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases      * - List all artifacts by building/worker/tag
          * @summary Semantic Search Query
          * @param {string} organisation The organisation ID
          * @param {string} collectionId The collection ID
@@ -9512,6 +9074,18 @@ const AIVectorDatabaseApiFactory = function (configuration, basePath, axios) {
             return localVarFp.deleteVectorCollection(organisation, collectionId, options).then((request) => request(axios, basePath));
         },
         /**
+         * Delete documents from a collection. Supports three deletion modes:      *      * 1. **Purge All** - Set `purgeAll: true` to delete ALL documents in the collection      *      * 2. **By Document IDs** - Provide `documentIds` array with specific document UUIDs      *      * 3. **By Metadata** - Provide `metadata` object with `field` and `values` to delete documents where the metadata field matches any of the values      *      * **Drupal Integration:**      * When using with Drupal AI Search, use metadata deletion with:      * - `field: \'drupal_entity_id\'` to delete all chunks for specific entities      * - `field: \'drupal_long_id\'` to delete specific chunks
+         * @summary Delete Documents from Collection
+         * @param {string} organisation Organisation machine name
+         * @param {string} collectionId Collection UUID
+         * @param {DeleteVectorDocumentsRequest} deleteVectorDocumentsRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        deleteVectorDocuments(organisation, collectionId, deleteVectorDocumentsRequest, options) {
+            return localVarFp.deleteVectorDocuments(organisation, collectionId, deleteVectorDocumentsRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          * Get detailed information about a specific vector database collection.
          * @summary Get Collection Details
          * @param {string} organisation The organisation ID
@@ -9533,7 +9107,7 @@ const AIVectorDatabaseApiFactory = function (configuration, basePath, axios) {
             return localVarFp.listVectorCollections(organisation, options).then((request) => request(axios, basePath));
         },
         /**
-         * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases
+         * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Three Search Modes:**      *      * 1. **Text Query** - Provide `query` string, server generates embedding      *    - Query text is embedded using the collection\'s embedding model      *    - Embeddings are cached for repeated queries      *      * 2. **Vector Query** - Provide pre-computed `vector` array      *    - Skip embedding generation (faster)      *    - Useful when you\'ve already embedded the query elsewhere      *    - Vector dimension must match collection (e.g., 1024 for Titan v2)      *      * 3. **Metadata List** - Set `listByMetadata: true` with `filter`      *    - Skip semantic search entirely      *    - Return all documents matching the filter      *    - Supports cursor-based pagination for large datasets      *    - Results ordered by sortBy/sortOrder (default: created_at DESC)      *      * **Filtering:**      * - `filter.exact`: Exact match on metadata fields (AND logic)      * - `filter.contains`: Array contains filter for tags (ANY match)      * - Filters can be combined with semantic search or used alone with listByMetadata      *      * **Pagination (listByMetadata mode only):**      * - Use `cursor` from previous response\'s `nextCursor` to get next page      * - Uses keyset pagination for efficient traversal of large datasets      * - Control sort with `sortBy` and `sortOrder`      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases      * - List all artifacts by building/worker/tag
          * @summary Semantic Search Query
          * @param {string} organisation The organisation ID
          * @param {string} collectionId The collection ID
@@ -9591,6 +9165,19 @@ class AIVectorDatabaseApi extends base_1.BaseAPI {
         return (0, exports.AIVectorDatabaseApiFp)(this.configuration).deleteVectorCollection(organisation, collectionId, options).then((request) => request(this.axios, this.basePath));
     }
     /**
+     * Delete documents from a collection. Supports three deletion modes:      *      * 1. **Purge All** - Set `purgeAll: true` to delete ALL documents in the collection      *      * 2. **By Document IDs** - Provide `documentIds` array with specific document UUIDs      *      * 3. **By Metadata** - Provide `metadata` object with `field` and `values` to delete documents where the metadata field matches any of the values      *      * **Drupal Integration:**      * When using with Drupal AI Search, use metadata deletion with:      * - `field: \'drupal_entity_id\'` to delete all chunks for specific entities      * - `field: \'drupal_long_id\'` to delete specific chunks
+     * @summary Delete Documents from Collection
+     * @param {string} organisation Organisation machine name
+     * @param {string} collectionId Collection UUID
+     * @param {DeleteVectorDocumentsRequest} deleteVectorDocumentsRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof AIVectorDatabaseApi
+     */
+    deleteVectorDocuments(organisation, collectionId, deleteVectorDocumentsRequest, options) {
+        return (0, exports.AIVectorDatabaseApiFp)(this.configuration).deleteVectorDocuments(organisation, collectionId, deleteVectorDocumentsRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
      * Get detailed information about a specific vector database collection.
      * @summary Get Collection Details
      * @param {string} organisation The organisation ID
@@ -9614,7 +9201,7 @@ class AIVectorDatabaseApi extends base_1.BaseAPI {
         return (0, exports.AIVectorDatabaseApiFp)(this.configuration).listVectorCollections(organisation, options).then((request) => request(this.axios, this.basePath));
     }
     /**
-     * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases
+     * Performs semantic search on a collection using vector similarity. Returns the most relevant documents based on meaning, not keyword matching.      *      * **Three Search Modes:**      *      * 1. **Text Query** - Provide `query` string, server generates embedding      *    - Query text is embedded using the collection\'s embedding model      *    - Embeddings are cached for repeated queries      *      * 2. **Vector Query** - Provide pre-computed `vector` array      *    - Skip embedding generation (faster)      *    - Useful when you\'ve already embedded the query elsewhere      *    - Vector dimension must match collection (e.g., 1024 for Titan v2)      *      * 3. **Metadata List** - Set `listByMetadata: true` with `filter`      *    - Skip semantic search entirely      *    - Return all documents matching the filter      *    - Supports cursor-based pagination for large datasets      *    - Results ordered by sortBy/sortOrder (default: created_at DESC)      *      * **Filtering:**      * - `filter.exact`: Exact match on metadata fields (AND logic)      * - `filter.contains`: Array contains filter for tags (ANY match)      * - Filters can be combined with semantic search or used alone with listByMetadata      *      * **Pagination (listByMetadata mode only):**      * - Use `cursor` from previous response\'s `nextCursor` to get next page      * - Uses keyset pagination for efficient traversal of large datasets      * - Control sort with `sortBy` and `sortOrder`      *      * **Use Cases:**      * - Find relevant documentation for user questions      * - Power RAG (Retrieval Augmented Generation) in AI assistants      * - Semantic search across knowledge bases      * - List all artifacts by building/worker/tag
      * @summary Semantic Search Query
      * @param {string} organisation The organisation ID
      * @param {string} collectionId The collection ID
@@ -10552,6 +10139,440 @@ exports.ListBackupsStatusEnum = {
     Completed: 'completed',
     Failed: 'failed',
     Running: 'running'
+};
+/**
+ * CDNMetricsApi - axios parameter creator
+ * @export
+ */
+const CDNMetricsApiAxiosParamCreator = function (configuration) {
+    return {
+        /**
+         * Returns the last 30 days of daily metrics data
+         * @summary Get daily metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetDailyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetDailyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDailyMetrics: (organization_1, project_1, domain_1, metrics_1, timestampFormat_1, ...args_1) => __awaiter(this, [organization_1, project_1, domain_1, metrics_1, timestampFormat_1, ...args_1], void 0, function* (organization, project, domain, metrics, timestampFormat, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('getDailyMetrics', 'organization', organization);
+            // verify required parameter 'project' is not null or undefined
+            (0, common_1.assertParamExists)('getDailyMetrics', 'project', project);
+            const localVarPath = `/v2/organizations/{organization}/projects/{project}/metrics/daily`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)))
+                .replace(`{${"project"}}`, encodeURIComponent(String(project)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (domain !== undefined) {
+                localVarQueryParameter['domain'] = domain;
+            }
+            if (metrics) {
+                localVarQueryParameter['metrics[]'] = metrics;
+            }
+            if (timestampFormat !== undefined) {
+                localVarQueryParameter['timestamp_format'] = timestampFormat;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Returns the last hour of minute-by-minute metrics data
+         * @summary Get hourly metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetHourlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetHourlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getHourlyMetrics: (organization_1, project_1, domain_1, metrics_1, timestampFormat_1, ...args_1) => __awaiter(this, [organization_1, project_1, domain_1, metrics_1, timestampFormat_1, ...args_1], void 0, function* (organization, project, domain, metrics, timestampFormat, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('getHourlyMetrics', 'organization', organization);
+            // verify required parameter 'project' is not null or undefined
+            (0, common_1.assertParamExists)('getHourlyMetrics', 'project', project);
+            const localVarPath = `/v2/organizations/{organization}/projects/{project}/metrics/hourly`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)))
+                .replace(`{${"project"}}`, encodeURIComponent(String(project)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (domain !== undefined) {
+                localVarQueryParameter['domain'] = domain;
+            }
+            if (metrics) {
+                localVarQueryParameter['metrics[]'] = metrics;
+            }
+            if (timestampFormat !== undefined) {
+                localVarQueryParameter['timestamp_format'] = timestampFormat;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Returns the last 12 months of monthly metrics data
+         * @summary Get monthly metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetMonthlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetMonthlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getMonthlyMetrics: (organization_1, project_1, domain_1, metrics_1, timestampFormat_1, ...args_1) => __awaiter(this, [organization_1, project_1, domain_1, metrics_1, timestampFormat_1, ...args_1], void 0, function* (organization, project, domain, metrics, timestampFormat, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('getMonthlyMetrics', 'organization', organization);
+            // verify required parameter 'project' is not null or undefined
+            (0, common_1.assertParamExists)('getMonthlyMetrics', 'project', project);
+            const localVarPath = `/v2/organizations/{organization}/projects/{project}/metrics/monthly`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)))
+                .replace(`{${"project"}}`, encodeURIComponent(String(project)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            if (domain !== undefined) {
+                localVarQueryParameter['domain'] = domain;
+            }
+            if (metrics) {
+                localVarQueryParameter['metrics[]'] = metrics;
+            }
+            if (timestampFormat !== undefined) {
+                localVarQueryParameter['timestamp_format'] = timestampFormat;
+            }
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+    };
+};
+exports.CDNMetricsApiAxiosParamCreator = CDNMetricsApiAxiosParamCreator;
+/**
+ * CDNMetricsApi - functional programming interface
+ * @export
+ */
+const CDNMetricsApiFp = function (configuration) {
+    const localVarAxiosParamCreator = (0, exports.CDNMetricsApiAxiosParamCreator)(configuration);
+    return {
+        /**
+         * Returns the last 30 days of daily metrics data
+         * @summary Get daily metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetDailyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetDailyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDailyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getDailyMetrics(organization, project, domain, metrics, timestampFormat, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['CDNMetricsApi.getDailyMetrics']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Returns the last hour of minute-by-minute metrics data
+         * @summary Get hourly metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetHourlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetHourlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getHourlyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getHourlyMetrics(organization, project, domain, metrics, timestampFormat, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['CDNMetricsApi.getHourlyMetrics']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Returns the last 12 months of monthly metrics data
+         * @summary Get monthly metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetMonthlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetMonthlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getMonthlyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.getMonthlyMetrics(organization, project, domain, metrics, timestampFormat, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['CDNMetricsApi.getMonthlyMetrics']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+    };
+};
+exports.CDNMetricsApiFp = CDNMetricsApiFp;
+/**
+ * CDNMetricsApi - factory interface
+ * @export
+ */
+const CDNMetricsApiFactory = function (configuration, basePath, axios) {
+    const localVarFp = (0, exports.CDNMetricsApiFp)(configuration);
+    return {
+        /**
+         * Returns the last 30 days of daily metrics data
+         * @summary Get daily metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetDailyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetDailyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getDailyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+            return localVarFp.getDailyMetrics(organization, project, domain, metrics, timestampFormat, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Returns the last hour of minute-by-minute metrics data
+         * @summary Get hourly metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetHourlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetHourlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getHourlyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+            return localVarFp.getHourlyMetrics(organization, project, domain, metrics, timestampFormat, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Returns the last 12 months of monthly metrics data
+         * @summary Get monthly metrics
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} [domain] Filter by domain ID or domain name
+         * @param {Array<GetMonthlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+         * @param {GetMonthlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        getMonthlyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+            return localVarFp.getMonthlyMetrics(organization, project, domain, metrics, timestampFormat, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+exports.CDNMetricsApiFactory = CDNMetricsApiFactory;
+/**
+ * CDNMetricsApi - object-oriented interface
+ * @export
+ * @class CDNMetricsApi
+ * @extends {BaseAPI}
+ */
+class CDNMetricsApi extends base_1.BaseAPI {
+    /**
+     * Returns the last 30 days of daily metrics data
+     * @summary Get daily metrics
+     * @param {string} organization Organization identifier
+     * @param {string} project Project identifier
+     * @param {string} [domain] Filter by domain ID or domain name
+     * @param {Array<GetDailyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+     * @param {GetDailyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CDNMetricsApi
+     */
+    getDailyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+        return (0, exports.CDNMetricsApiFp)(this.configuration).getDailyMetrics(organization, project, domain, metrics, timestampFormat, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Returns the last hour of minute-by-minute metrics data
+     * @summary Get hourly metrics
+     * @param {string} organization Organization identifier
+     * @param {string} project Project identifier
+     * @param {string} [domain] Filter by domain ID or domain name
+     * @param {Array<GetHourlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+     * @param {GetHourlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CDNMetricsApi
+     */
+    getHourlyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+        return (0, exports.CDNMetricsApiFp)(this.configuration).getHourlyMetrics(organization, project, domain, metrics, timestampFormat, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Returns the last 12 months of monthly metrics data
+     * @summary Get monthly metrics
+     * @param {string} organization Organization identifier
+     * @param {string} project Project identifier
+     * @param {string} [domain] Filter by domain ID or domain name
+     * @param {Array<GetMonthlyMetricsMetricsEnum>} [metrics] Metrics to return (default: hits, bytes). Use the /metrics/available endpoint to list all metrics by category.
+     * @param {GetMonthlyMetricsTimestampFormatEnum} [timestampFormat] Timestamp format in response
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof CDNMetricsApi
+     */
+    getMonthlyMetrics(organization, project, domain, metrics, timestampFormat, options) {
+        return (0, exports.CDNMetricsApiFp)(this.configuration).getMonthlyMetrics(organization, project, domain, metrics, timestampFormat, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+exports.CDNMetricsApi = CDNMetricsApi;
+/**
+ * @export
+ */
+exports.GetDailyMetricsMetricsEnum = {
+    Hits: 'hits',
+    Bytes: 'bytes',
+    EdgeRespHeaderBytes: 'edge_resp_header_bytes',
+    BereqBodyBytes: 'bereq_body_bytes',
+    BereqHeaderBytes: 'bereq_header_bytes',
+    Bandwidth: 'bandwidth',
+    EdgeHitRatio: 'edge_hit_ratio',
+    EdgeHitRequests: 'edge_hit_requests',
+    EdgeMissRequests: 'edge_miss_requests',
+    OriginFetches: 'origin_fetches',
+    OriginFetchRespBodyBytes: 'origin_fetch_resp_body_bytes',
+    OriginFetchRespHeaderBytes: 'origin_fetch_resp_header_bytes',
+    OriginOffload: 'origin_offload',
+    Status1xx: 'status_1xx',
+    Status2xx: 'status_2xx',
+    Status3xx: 'status_3xx',
+    Status4xx: 'status_4xx',
+    Status5xx: 'status_5xx',
+    OriginStatus1xx: 'origin_status_1xx',
+    OriginStatus2xx: 'origin_status_2xx',
+    OriginStatus3xx: 'origin_status_3xx',
+    OriginStatus4xx: 'origin_status_4xx',
+    OriginStatus5xx: 'origin_status_5xx'
+};
+/**
+ * @export
+ */
+exports.GetDailyMetricsTimestampFormatEnum = {
+    Iso8601: 'iso8601',
+    Unix: 'unix'
+};
+/**
+ * @export
+ */
+exports.GetHourlyMetricsMetricsEnum = {
+    Hits: 'hits',
+    Bytes: 'bytes',
+    EdgeRespHeaderBytes: 'edge_resp_header_bytes',
+    BereqBodyBytes: 'bereq_body_bytes',
+    BereqHeaderBytes: 'bereq_header_bytes',
+    Bandwidth: 'bandwidth',
+    EdgeHitRatio: 'edge_hit_ratio',
+    EdgeHitRequests: 'edge_hit_requests',
+    EdgeMissRequests: 'edge_miss_requests',
+    OriginFetches: 'origin_fetches',
+    OriginFetchRespBodyBytes: 'origin_fetch_resp_body_bytes',
+    OriginFetchRespHeaderBytes: 'origin_fetch_resp_header_bytes',
+    OriginOffload: 'origin_offload',
+    Status1xx: 'status_1xx',
+    Status2xx: 'status_2xx',
+    Status3xx: 'status_3xx',
+    Status4xx: 'status_4xx',
+    Status5xx: 'status_5xx',
+    OriginStatus1xx: 'origin_status_1xx',
+    OriginStatus2xx: 'origin_status_2xx',
+    OriginStatus3xx: 'origin_status_3xx',
+    OriginStatus4xx: 'origin_status_4xx',
+    OriginStatus5xx: 'origin_status_5xx'
+};
+/**
+ * @export
+ */
+exports.GetHourlyMetricsTimestampFormatEnum = {
+    Iso8601: 'iso8601',
+    Unix: 'unix'
+};
+/**
+ * @export
+ */
+exports.GetMonthlyMetricsMetricsEnum = {
+    Hits: 'hits',
+    Bytes: 'bytes',
+    EdgeRespHeaderBytes: 'edge_resp_header_bytes',
+    BereqBodyBytes: 'bereq_body_bytes',
+    BereqHeaderBytes: 'bereq_header_bytes',
+    Bandwidth: 'bandwidth',
+    EdgeHitRatio: 'edge_hit_ratio',
+    EdgeHitRequests: 'edge_hit_requests',
+    EdgeMissRequests: 'edge_miss_requests',
+    OriginFetches: 'origin_fetches',
+    OriginFetchRespBodyBytes: 'origin_fetch_resp_body_bytes',
+    OriginFetchRespHeaderBytes: 'origin_fetch_resp_header_bytes',
+    OriginOffload: 'origin_offload',
+    Status1xx: 'status_1xx',
+    Status2xx: 'status_2xx',
+    Status3xx: 'status_3xx',
+    Status4xx: 'status_4xx',
+    Status5xx: 'status_5xx',
+    OriginStatus1xx: 'origin_status_1xx',
+    OriginStatus2xx: 'origin_status_2xx',
+    OriginStatus3xx: 'origin_status_3xx',
+    OriginStatus4xx: 'origin_status_4xx',
+    OriginStatus5xx: 'origin_status_5xx'
+};
+/**
+ * @export
+ */
+exports.GetMonthlyMetricsTimestampFormatEnum = {
+    Iso8601: 'iso8601',
+    Unix: 'unix'
 };
 /**
  * CommandsApi - axios parameter creator
@@ -15279,6 +15300,51 @@ const KVApiAxiosParamCreator = function (configuration) {
             };
         }),
         /**
+         * Share a KV store from the source project with a target project. The store will be accessible in the target project.
+         * @summary Link a KV store to another project
+         * @param {string} organization Organization identifier
+         * @param {string} project Source project identifier
+         * @param {string} storeId KV store identifier
+         * @param {KVLinkToProjectRequest} kVLinkToProjectRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        kVLinkToProject: (organization_1, project_1, storeId_1, kVLinkToProjectRequest_1, ...args_1) => __awaiter(this, [organization_1, project_1, storeId_1, kVLinkToProjectRequest_1, ...args_1], void 0, function* (organization, project, storeId, kVLinkToProjectRequest, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('kVLinkToProject', 'organization', organization);
+            // verify required parameter 'project' is not null or undefined
+            (0, common_1.assertParamExists)('kVLinkToProject', 'project', project);
+            // verify required parameter 'storeId' is not null or undefined
+            (0, common_1.assertParamExists)('kVLinkToProject', 'storeId', storeId);
+            // verify required parameter 'kVLinkToProjectRequest' is not null or undefined
+            (0, common_1.assertParamExists)('kVLinkToProject', 'kVLinkToProjectRequest', kVLinkToProjectRequest);
+            const localVarPath = `/api/v2/organizations/{organization}/projects/{project}/kv/{store_id}/link`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)))
+                .replace(`{${"project"}}`, encodeURIComponent(String(project)))
+                .replace(`{${"store_id"}}`, encodeURIComponent(String(storeId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(kVLinkToProjectRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
          *
          * @summary List key-value stores
          * @param {string} organization Organization identifier
@@ -15341,6 +15407,46 @@ const KVApiAxiosParamCreator = function (configuration) {
                 baseOptions = configuration.baseOptions;
             }
             const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         * Remove access to a linked KV store from this project. The store must be linked (not owned by this project).
+         * @summary Unlink a KV store from this project
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} storeId KV store identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        kVUnlinkFromProject: (organization_1, project_1, storeId_1, ...args_1) => __awaiter(this, [organization_1, project_1, storeId_1, ...args_1], void 0, function* (organization, project, storeId, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('kVUnlinkFromProject', 'organization', organization);
+            // verify required parameter 'project' is not null or undefined
+            (0, common_1.assertParamExists)('kVUnlinkFromProject', 'project', project);
+            // verify required parameter 'storeId' is not null or undefined
+            (0, common_1.assertParamExists)('kVUnlinkFromProject', 'storeId', storeId);
+            const localVarPath = `/api/v2/organizations/{organization}/projects/{project}/kv/{store_id}/link`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)))
+                .replace(`{${"project"}}`, encodeURIComponent(String(project)))
+                .replace(`{${"store_id"}}`, encodeURIComponent(String(storeId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
             const localVarHeaderParameter = {};
             const localVarQueryParameter = {};
             // authentication BearerAuth required
@@ -15500,6 +15606,25 @@ const KVApiFp = function (configuration) {
             });
         },
         /**
+         * Share a KV store from the source project with a target project. The store will be accessible in the target project.
+         * @summary Link a KV store to another project
+         * @param {string} organization Organization identifier
+         * @param {string} project Source project identifier
+         * @param {string} storeId KV store identifier
+         * @param {KVLinkToProjectRequest} kVLinkToProjectRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        kVLinkToProject(organization, project, storeId, kVLinkToProjectRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.kVLinkToProject(organization, project, storeId, kVLinkToProjectRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['KVApi.kVLinkToProject']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
          *
          * @summary List key-value stores
          * @param {string} organization Organization identifier
@@ -15531,6 +15656,24 @@ const KVApiFp = function (configuration) {
                 const localVarAxiosArgs = yield localVarAxiosParamCreator.kVShow(organization, project, storeId, options);
                 const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
                 const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['KVApi.kVShow']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         * Remove access to a linked KV store from this project. The store must be linked (not owned by this project).
+         * @summary Unlink a KV store from this project
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} storeId KV store identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        kVUnlinkFromProject(organization, project, storeId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.kVUnlinkFromProject(organization, project, storeId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['KVApi.kVUnlinkFromProject']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
                 return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
             });
         },
@@ -15638,6 +15781,19 @@ const KVApiFactory = function (configuration, basePath, axios) {
             return localVarFp.kVItemsUpdate(organization, project, storeId, key, v2StoreItemUpdateRequest, options).then((request) => request(axios, basePath));
         },
         /**
+         * Share a KV store from the source project with a target project. The store will be accessible in the target project.
+         * @summary Link a KV store to another project
+         * @param {string} organization Organization identifier
+         * @param {string} project Source project identifier
+         * @param {string} storeId KV store identifier
+         * @param {KVLinkToProjectRequest} kVLinkToProjectRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        kVLinkToProject(organization, project, storeId, kVLinkToProjectRequest, options) {
+            return localVarFp.kVLinkToProject(organization, project, storeId, kVLinkToProjectRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
          *
          * @summary List key-value stores
          * @param {string} organization Organization identifier
@@ -15659,6 +15815,18 @@ const KVApiFactory = function (configuration, basePath, axios) {
          */
         kVShow(organization, project, storeId, options) {
             return localVarFp.kVShow(organization, project, storeId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         * Remove access to a linked KV store from this project. The store must be linked (not owned by this project).
+         * @summary Unlink a KV store from this project
+         * @param {string} organization Organization identifier
+         * @param {string} project Project identifier
+         * @param {string} storeId KV store identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        kVUnlinkFromProject(organization, project, storeId, options) {
+            return localVarFp.kVUnlinkFromProject(organization, project, storeId, options).then((request) => request(axios, basePath));
         },
     };
 };
@@ -15771,6 +15939,20 @@ class KVApi extends base_1.BaseAPI {
         return (0, exports.KVApiFp)(this.configuration).kVItemsUpdate(organization, project, storeId, key, v2StoreItemUpdateRequest, options).then((request) => request(this.axios, this.basePath));
     }
     /**
+     * Share a KV store from the source project with a target project. The store will be accessible in the target project.
+     * @summary Link a KV store to another project
+     * @param {string} organization Organization identifier
+     * @param {string} project Source project identifier
+     * @param {string} storeId KV store identifier
+     * @param {KVLinkToProjectRequest} kVLinkToProjectRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof KVApi
+     */
+    kVLinkToProject(organization, project, storeId, kVLinkToProjectRequest, options) {
+        return (0, exports.KVApiFp)(this.configuration).kVLinkToProject(organization, project, storeId, kVLinkToProjectRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
      *
      * @summary List key-value stores
      * @param {string} organization Organization identifier
@@ -15794,6 +15976,19 @@ class KVApi extends base_1.BaseAPI {
      */
     kVShow(organization, project, storeId, options) {
         return (0, exports.KVApiFp)(this.configuration).kVShow(organization, project, storeId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     * Remove access to a linked KV store from this project. The store must be linked (not owned by this project).
+     * @summary Unlink a KV store from this project
+     * @param {string} organization Organization identifier
+     * @param {string} project Project identifier
+     * @param {string} storeId KV store identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof KVApi
+     */
+    kVUnlinkFromProject(organization, project, storeId, options) {
+        return (0, exports.KVApiFp)(this.configuration).kVUnlinkFromProject(organization, project, storeId, options).then((request) => request(this.axios, this.basePath));
     }
 }
 exports.KVApi = KVApi;
@@ -20732,6 +20927,266 @@ class ScalingPolicyApi extends base_1.BaseAPI {
 }
 exports.ScalingPolicyApi = ScalingPolicyApi;
 /**
+ * TokensApi - axios parameter creator
+ * @export
+ */
+const TokensApiAxiosParamCreator = function (configuration) {
+    return {
+        /**
+         *
+         * @summary Create a new API token scoped to this organization
+         * @param {string} organization Organization identifier
+         * @param {TokensCreateRequest} tokensCreateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensCreate: (organization_1, tokensCreateRequest_1, ...args_1) => __awaiter(this, [organization_1, tokensCreateRequest_1, ...args_1], void 0, function* (organization, tokensCreateRequest, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('tokensCreate', 'organization', organization);
+            // verify required parameter 'tokensCreateRequest' is not null or undefined
+            (0, common_1.assertParamExists)('tokensCreate', 'tokensCreateRequest', tokensCreateRequest);
+            const localVarPath = `/api/v2/organizations/{organization}/tokens`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'POST' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            localVarHeaderParameter['Content-Type'] = 'application/json';
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            localVarRequestOptions.data = (0, common_1.serializeDataIfNeeded)(tokensCreateRequest, localVarRequestOptions, configuration);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         *
+         * @summary Revoke an API token
+         * @param {string} organization Organization identifier
+         * @param {number} tokenId Token ID to revoke
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensDelete: (organization_1, tokenId_1, ...args_1) => __awaiter(this, [organization_1, tokenId_1, ...args_1], void 0, function* (organization, tokenId, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('tokensDelete', 'organization', organization);
+            // verify required parameter 'tokenId' is not null or undefined
+            (0, common_1.assertParamExists)('tokensDelete', 'tokenId', tokenId);
+            const localVarPath = `/api/v2/organizations/{organization}/tokens/{token_id}`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)))
+                .replace(`{${"token_id"}}`, encodeURIComponent(String(tokenId)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'DELETE' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+        /**
+         *
+         * @summary List API tokens scoped to this organization
+         * @param {string} organization Organization identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensList: (organization_1, ...args_1) => __awaiter(this, [organization_1, ...args_1], void 0, function* (organization, options = {}) {
+            // verify required parameter 'organization' is not null or undefined
+            (0, common_1.assertParamExists)('tokensList', 'organization', organization);
+            const localVarPath = `/api/v2/organizations/{organization}/tokens`
+                .replace(`{${"organization"}}`, encodeURIComponent(String(organization)));
+            // use dummy base URL string because the URL constructor only accepts absolute URLs.
+            const localVarUrlObj = new URL(localVarPath, common_1.DUMMY_BASE_URL);
+            let baseOptions;
+            if (configuration) {
+                baseOptions = configuration.baseOptions;
+            }
+            const localVarRequestOptions = Object.assign(Object.assign({ method: 'GET' }, baseOptions), options);
+            const localVarHeaderParameter = {};
+            const localVarQueryParameter = {};
+            // authentication BearerAuth required
+            // http bearer authentication required
+            yield (0, common_1.setBearerAuthToObject)(localVarHeaderParameter, configuration);
+            (0, common_1.setSearchParams)(localVarUrlObj, localVarQueryParameter);
+            let headersFromBaseOptions = baseOptions && baseOptions.headers ? baseOptions.headers : {};
+            localVarRequestOptions.headers = Object.assign(Object.assign(Object.assign({}, localVarHeaderParameter), headersFromBaseOptions), options.headers);
+            return {
+                url: (0, common_1.toPathString)(localVarUrlObj),
+                options: localVarRequestOptions,
+            };
+        }),
+    };
+};
+exports.TokensApiAxiosParamCreator = TokensApiAxiosParamCreator;
+/**
+ * TokensApi - functional programming interface
+ * @export
+ */
+const TokensApiFp = function (configuration) {
+    const localVarAxiosParamCreator = (0, exports.TokensApiAxiosParamCreator)(configuration);
+    return {
+        /**
+         *
+         * @summary Create a new API token scoped to this organization
+         * @param {string} organization Organization identifier
+         * @param {TokensCreateRequest} tokensCreateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensCreate(organization, tokensCreateRequest, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.tokensCreate(organization, tokensCreateRequest, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['TokensApi.tokensCreate']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         *
+         * @summary Revoke an API token
+         * @param {string} organization Organization identifier
+         * @param {number} tokenId Token ID to revoke
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensDelete(organization, tokenId, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.tokensDelete(organization, tokenId, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['TokensApi.tokensDelete']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+        /**
+         *
+         * @summary List API tokens scoped to this organization
+         * @param {string} organization Organization identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensList(organization, options) {
+            return __awaiter(this, void 0, void 0, function* () {
+                var _a, _b, _c;
+                const localVarAxiosArgs = yield localVarAxiosParamCreator.tokensList(organization, options);
+                const localVarOperationServerIndex = (_a = configuration === null || configuration === void 0 ? void 0 : configuration.serverIndex) !== null && _a !== void 0 ? _a : 0;
+                const localVarOperationServerBasePath = (_c = (_b = base_1.operationServerMap['TokensApi.tokensList']) === null || _b === void 0 ? void 0 : _b[localVarOperationServerIndex]) === null || _c === void 0 ? void 0 : _c.url;
+                return (axios, basePath) => (0, common_1.createRequestFunction)(localVarAxiosArgs, axios_1.default, base_1.BASE_PATH, configuration)(axios, localVarOperationServerBasePath || basePath);
+            });
+        },
+    };
+};
+exports.TokensApiFp = TokensApiFp;
+/**
+ * TokensApi - factory interface
+ * @export
+ */
+const TokensApiFactory = function (configuration, basePath, axios) {
+    const localVarFp = (0, exports.TokensApiFp)(configuration);
+    return {
+        /**
+         *
+         * @summary Create a new API token scoped to this organization
+         * @param {string} organization Organization identifier
+         * @param {TokensCreateRequest} tokensCreateRequest
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensCreate(organization, tokensCreateRequest, options) {
+            return localVarFp.tokensCreate(organization, tokensCreateRequest, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary Revoke an API token
+         * @param {string} organization Organization identifier
+         * @param {number} tokenId Token ID to revoke
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensDelete(organization, tokenId, options) {
+            return localVarFp.tokensDelete(organization, tokenId, options).then((request) => request(axios, basePath));
+        },
+        /**
+         *
+         * @summary List API tokens scoped to this organization
+         * @param {string} organization Organization identifier
+         * @param {*} [options] Override http request option.
+         * @throws {RequiredError}
+         */
+        tokensList(organization, options) {
+            return localVarFp.tokensList(organization, options).then((request) => request(axios, basePath));
+        },
+    };
+};
+exports.TokensApiFactory = TokensApiFactory;
+/**
+ * TokensApi - object-oriented interface
+ * @export
+ * @class TokensApi
+ * @extends {BaseAPI}
+ */
+class TokensApi extends base_1.BaseAPI {
+    /**
+     *
+     * @summary Create a new API token scoped to this organization
+     * @param {string} organization Organization identifier
+     * @param {TokensCreateRequest} tokensCreateRequest
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof TokensApi
+     */
+    tokensCreate(organization, tokensCreateRequest, options) {
+        return (0, exports.TokensApiFp)(this.configuration).tokensCreate(organization, tokensCreateRequest, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     *
+     * @summary Revoke an API token
+     * @param {string} organization Organization identifier
+     * @param {number} tokenId Token ID to revoke
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof TokensApi
+     */
+    tokensDelete(organization, tokenId, options) {
+        return (0, exports.TokensApiFp)(this.configuration).tokensDelete(organization, tokenId, options).then((request) => request(this.axios, this.basePath));
+    }
+    /**
+     *
+     * @summary List API tokens scoped to this organization
+     * @param {string} organization Organization identifier
+     * @param {*} [options] Override http request option.
+     * @throws {RequiredError}
+     * @memberof TokensApi
+     */
+    tokensList(organization, options) {
+        return (0, exports.TokensApiFp)(this.configuration).tokensList(organization, options).then((request) => request(this.axios, this.basePath));
+    }
+}
+exports.TokensApi = TokensApi;
+/**
  * VariablesApi - axios parameter creator
  * @export
  */
@@ -21527,7 +21982,7 @@ exports.VolumesApi = VolumesApi;
 
 /***/ }),
 
-/***/ 1077:
+/***/ 8358:
 /***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
 
 "use strict";
@@ -21603,7 +22058,7 @@ exports.operationServerMap = {};
 
 /***/ }),
 
-/***/ 9873:
+/***/ 7186:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -21614,7 +22069,7 @@ exports.operationServerMap = {};
  * QuantCDN API
  * Unified API for QuantCDN Admin and QuantCloud Platform services
  *
- * The version of the OpenAPI document: 4.8.0
+ * The version of the OpenAPI document: 4.12.0
  *
  *
  * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
@@ -21632,7 +22087,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 exports.createRequestFunction = exports.toPathString = exports.serializeDataIfNeeded = exports.setSearchParams = exports.setOAuthToObject = exports.setBearerAuthToObject = exports.setBasicAuthToObject = exports.setApiKeyToObject = exports.assertParamExists = exports.DUMMY_BASE_URL = void 0;
-const base_1 = __nccwpck_require__(1077);
+const base_1 = __nccwpck_require__(8358);
 /**
  *
  * @export
@@ -21772,7 +22227,7 @@ exports.createRequestFunction = createRequestFunction;
 
 /***/ }),
 
-/***/ 28:
+/***/ 4018:
 /***/ ((__unused_webpack_module, exports) => {
 
 "use strict";
@@ -21783,7 +22238,7 @@ exports.createRequestFunction = createRequestFunction;
  * QuantCDN API
  * Unified API for QuantCDN Admin and QuantCloud Platform services
  *
- * The version of the OpenAPI document: 4.8.0
+ * The version of the OpenAPI document: 4.12.0
  *
  *
  * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
@@ -21824,7 +22279,7 @@ exports.Configuration = Configuration;
 
 /***/ }),
 
-/***/ 4046:
+/***/ 6491:
 /***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
@@ -21835,7 +22290,7 @@ exports.Configuration = Configuration;
  * QuantCDN API
  * Unified API for QuantCDN Admin and QuantCloud Platform services
  *
- * The version of the OpenAPI document: 4.8.0
+ * The version of the OpenAPI document: 4.12.0
  *
  *
  * NOTE: This class is auto generated by OpenAPI Generator (https://openapi-generator.tech).
@@ -21857,8 +22312,3419 @@ var __exportStar = (this && this.__exportStar) || function(m, exports) {
     for (var p in m) if (p !== "default" && !Object.prototype.hasOwnProperty.call(exports, p)) __createBinding(exports, m, p);
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-__exportStar(__nccwpck_require__(4534), exports);
-__exportStar(__nccwpck_require__(28), exports);
+__exportStar(__nccwpck_require__(6111), exports);
+__exportStar(__nccwpck_require__(4018), exports);
+
+
+/***/ }),
+
+/***/ 1324:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+module.exports =
+{
+  parallel      : __nccwpck_require__(3857),
+  serial        : __nccwpck_require__(1054),
+  serialOrdered : __nccwpck_require__(3961)
+};
+
+
+/***/ }),
+
+/***/ 4818:
+/***/ ((module) => {
+
+// API
+module.exports = abort;
+
+/**
+ * Aborts leftover active jobs
+ *
+ * @param {object} state - current state object
+ */
+function abort(state)
+{
+  Object.keys(state.jobs).forEach(clean.bind(state));
+
+  // reset leftover jobs
+  state.jobs = {};
+}
+
+/**
+ * Cleans up leftover job by invoking abort function for the provided job id
+ *
+ * @this  state
+ * @param {string|number} key - job id to abort
+ */
+function clean(key)
+{
+  if (typeof this.jobs[key] == 'function')
+  {
+    this.jobs[key]();
+  }
+}
+
+
+/***/ }),
+
+/***/ 8452:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var defer = __nccwpck_require__(9200);
+
+// API
+module.exports = async;
+
+/**
+ * Runs provided callback asynchronously
+ * even if callback itself is not
+ *
+ * @param   {function} callback - callback to invoke
+ * @returns {function} - augmented callback
+ */
+function async(callback)
+{
+  var isAsync = false;
+
+  // check if async happened
+  defer(function() { isAsync = true; });
+
+  return function async_callback(err, result)
+  {
+    if (isAsync)
+    {
+      callback(err, result);
+    }
+    else
+    {
+      defer(function nextTick_callback()
+      {
+        callback(err, result);
+      });
+    }
+  };
+}
+
+
+/***/ }),
+
+/***/ 9200:
+/***/ ((module) => {
+
+module.exports = defer;
+
+/**
+ * Runs provided function on next iteration of the event loop
+ *
+ * @param {function} fn - function to run
+ */
+function defer(fn)
+{
+  var nextTick = typeof setImmediate == 'function'
+    ? setImmediate
+    : (
+      typeof process == 'object' && typeof process.nextTick == 'function'
+      ? process.nextTick
+      : null
+    );
+
+  if (nextTick)
+  {
+    nextTick(fn);
+  }
+  else
+  {
+    setTimeout(fn, 0);
+  }
+}
+
+
+/***/ }),
+
+/***/ 4902:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var async = __nccwpck_require__(8452)
+  , abort = __nccwpck_require__(4818)
+  ;
+
+// API
+module.exports = iterate;
+
+/**
+ * Iterates over each job object
+ *
+ * @param {array|object} list - array or object (named list) to iterate over
+ * @param {function} iterator - iterator to run
+ * @param {object} state - current job status
+ * @param {function} callback - invoked when all elements processed
+ */
+function iterate(list, iterator, state, callback)
+{
+  // store current index
+  var key = state['keyedList'] ? state['keyedList'][state.index] : state.index;
+
+  state.jobs[key] = runJob(iterator, key, list[key], function(error, output)
+  {
+    // don't repeat yourself
+    // skip secondary callbacks
+    if (!(key in state.jobs))
+    {
+      return;
+    }
+
+    // clean up jobs
+    delete state.jobs[key];
+
+    if (error)
+    {
+      // don't process rest of the results
+      // stop still active jobs
+      // and reset the list
+      abort(state);
+    }
+    else
+    {
+      state.results[key] = output;
+    }
+
+    // return salvaged results
+    callback(error, state.results);
+  });
+}
+
+/**
+ * Runs iterator over provided job element
+ *
+ * @param   {function} iterator - iterator to invoke
+ * @param   {string|number} key - key/index of the element in the list of jobs
+ * @param   {mixed} item - job description
+ * @param   {function} callback - invoked after iterator is done with the job
+ * @returns {function|mixed} - job abort function or something else
+ */
+function runJob(iterator, key, item, callback)
+{
+  var aborter;
+
+  // allow shortcut if iterator expects only two arguments
+  if (iterator.length == 2)
+  {
+    aborter = iterator(item, async(callback));
+  }
+  // otherwise go with full three arguments
+  else
+  {
+    aborter = iterator(item, key, async(callback));
+  }
+
+  return aborter;
+}
+
+
+/***/ }),
+
+/***/ 1721:
+/***/ ((module) => {
+
+// API
+module.exports = state;
+
+/**
+ * Creates initial state object
+ * for iteration over list
+ *
+ * @param   {array|object} list - list to iterate over
+ * @param   {function|null} sortMethod - function to use for keys sort,
+ *                                     or `null` to keep them as is
+ * @returns {object} - initial state object
+ */
+function state(list, sortMethod)
+{
+  var isNamedList = !Array.isArray(list)
+    , initState =
+    {
+      index    : 0,
+      keyedList: isNamedList || sortMethod ? Object.keys(list) : null,
+      jobs     : {},
+      results  : isNamedList ? {} : [],
+      size     : isNamedList ? Object.keys(list).length : list.length
+    }
+    ;
+
+  if (sortMethod)
+  {
+    // sort array keys based on it's values
+    // sort object's keys just on own merit
+    initState.keyedList.sort(isNamedList ? sortMethod : function(a, b)
+    {
+      return sortMethod(list[a], list[b]);
+    });
+  }
+
+  return initState;
+}
+
+
+/***/ }),
+
+/***/ 3351:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var abort = __nccwpck_require__(4818)
+  , async = __nccwpck_require__(8452)
+  ;
+
+// API
+module.exports = terminator;
+
+/**
+ * Terminates jobs in the attached state context
+ *
+ * @this  AsyncKitState#
+ * @param {function} callback - final callback to invoke after termination
+ */
+function terminator(callback)
+{
+  if (!Object.keys(this.jobs).length)
+  {
+    return;
+  }
+
+  // fast forward iteration index
+  this.index = this.size;
+
+  // abort jobs
+  abort(this);
+
+  // send back results we have so far
+  async(callback)(null, this.results);
+}
+
+
+/***/ }),
+
+/***/ 3857:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var iterate    = __nccwpck_require__(4902)
+  , initState  = __nccwpck_require__(1721)
+  , terminator = __nccwpck_require__(3351)
+  ;
+
+// Public API
+module.exports = parallel;
+
+/**
+ * Runs iterator over provided array elements in parallel
+ *
+ * @param   {array|object} list - array or object (named list) to iterate over
+ * @param   {function} iterator - iterator to run
+ * @param   {function} callback - invoked when all elements processed
+ * @returns {function} - jobs terminator
+ */
+function parallel(list, iterator, callback)
+{
+  var state = initState(list);
+
+  while (state.index < (state['keyedList'] || list).length)
+  {
+    iterate(list, iterator, state, function(error, result)
+    {
+      if (error)
+      {
+        callback(error, result);
+        return;
+      }
+
+      // looks like it's the last one
+      if (Object.keys(state.jobs).length === 0)
+      {
+        callback(null, state.results);
+        return;
+      }
+    });
+
+    state.index++;
+  }
+
+  return terminator.bind(state, callback);
+}
+
+
+/***/ }),
+
+/***/ 1054:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var serialOrdered = __nccwpck_require__(3961);
+
+// Public API
+module.exports = serial;
+
+/**
+ * Runs iterator over provided array elements in series
+ *
+ * @param   {array|object} list - array or object (named list) to iterate over
+ * @param   {function} iterator - iterator to run
+ * @param   {function} callback - invoked when all elements processed
+ * @returns {function} - jobs terminator
+ */
+function serial(list, iterator, callback)
+{
+  return serialOrdered(list, iterator, null, callback);
+}
+
+
+/***/ }),
+
+/***/ 3961:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var iterate    = __nccwpck_require__(4902)
+  , initState  = __nccwpck_require__(1721)
+  , terminator = __nccwpck_require__(3351)
+  ;
+
+// Public API
+module.exports = serialOrdered;
+// sorting helpers
+module.exports.ascending  = ascending;
+module.exports.descending = descending;
+
+/**
+ * Runs iterator over provided sorted array elements in series
+ *
+ * @param   {array|object} list - array or object (named list) to iterate over
+ * @param   {function} iterator - iterator to run
+ * @param   {function} sortMethod - custom sort function
+ * @param   {function} callback - invoked when all elements processed
+ * @returns {function} - jobs terminator
+ */
+function serialOrdered(list, iterator, sortMethod, callback)
+{
+  var state = initState(list, sortMethod);
+
+  iterate(list, iterator, state, function iteratorHandler(error, result)
+  {
+    if (error)
+    {
+      callback(error, result);
+      return;
+    }
+
+    state.index++;
+
+    // are we there yet?
+    if (state.index < (state['keyedList'] || list).length)
+    {
+      iterate(list, iterator, state, iteratorHandler);
+      return;
+    }
+
+    // done here
+    callback(null, state.results);
+  });
+
+  return terminator.bind(state, callback);
+}
+
+/*
+ * -- Sort methods
+ */
+
+/**
+ * sort helper to sort array elements in ascending order
+ *
+ * @param   {mixed} a - an item to compare
+ * @param   {mixed} b - an item to compare
+ * @returns {number} - comparison result
+ */
+function ascending(a, b)
+{
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * sort helper to sort array elements in descending order
+ *
+ * @param   {mixed} a - an item to compare
+ * @param   {mixed} b - an item to compare
+ * @returns {number} - comparison result
+ */
+function descending(a, b)
+{
+  return -1 * ascending(a, b);
+}
+
+
+/***/ }),
+
+/***/ 2639:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var bind = __nccwpck_require__(7564);
+
+var $apply = __nccwpck_require__(3945);
+var $call = __nccwpck_require__(8093);
+var $reflectApply = __nccwpck_require__(1330);
+
+/** @type {import('./actualApply')} */
+module.exports = $reflectApply || bind.call($call, $apply);
+
+
+/***/ }),
+
+/***/ 3945:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./functionApply')} */
+module.exports = Function.prototype.apply;
+
+
+/***/ }),
+
+/***/ 8093:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./functionCall')} */
+module.exports = Function.prototype.call;
+
+
+/***/ }),
+
+/***/ 8705:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var bind = __nccwpck_require__(7564);
+var $TypeError = __nccwpck_require__(3314);
+
+var $call = __nccwpck_require__(8093);
+var $actualApply = __nccwpck_require__(2639);
+
+/** @type {(args: [Function, thisArg?: unknown, ...args: unknown[]]) => Function} TODO FIXME, find a way to use import('.') */
+module.exports = function callBindBasic(args) {
+	if (args.length < 1 || typeof args[0] !== 'function') {
+		throw new $TypeError('a function is required');
+	}
+	return $actualApply(bind, $call, args);
+};
+
+
+/***/ }),
+
+/***/ 1330:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./reflectApply')} */
+module.exports = typeof Reflect !== 'undefined' && Reflect && Reflect.apply;
+
+
+/***/ }),
+
+/***/ 5630:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var util = __nccwpck_require__(9023);
+var Stream = (__nccwpck_require__(2203).Stream);
+var DelayedStream = __nccwpck_require__(2710);
+
+module.exports = CombinedStream;
+function CombinedStream() {
+  this.writable = false;
+  this.readable = true;
+  this.dataSize = 0;
+  this.maxDataSize = 2 * 1024 * 1024;
+  this.pauseStreams = true;
+
+  this._released = false;
+  this._streams = [];
+  this._currentStream = null;
+  this._insideLoop = false;
+  this._pendingNext = false;
+}
+util.inherits(CombinedStream, Stream);
+
+CombinedStream.create = function(options) {
+  var combinedStream = new this();
+
+  options = options || {};
+  for (var option in options) {
+    combinedStream[option] = options[option];
+  }
+
+  return combinedStream;
+};
+
+CombinedStream.isStreamLike = function(stream) {
+  return (typeof stream !== 'function')
+    && (typeof stream !== 'string')
+    && (typeof stream !== 'boolean')
+    && (typeof stream !== 'number')
+    && (!Buffer.isBuffer(stream));
+};
+
+CombinedStream.prototype.append = function(stream) {
+  var isStreamLike = CombinedStream.isStreamLike(stream);
+
+  if (isStreamLike) {
+    if (!(stream instanceof DelayedStream)) {
+      var newStream = DelayedStream.create(stream, {
+        maxDataSize: Infinity,
+        pauseStream: this.pauseStreams,
+      });
+      stream.on('data', this._checkDataSize.bind(this));
+      stream = newStream;
+    }
+
+    this._handleErrors(stream);
+
+    if (this.pauseStreams) {
+      stream.pause();
+    }
+  }
+
+  this._streams.push(stream);
+  return this;
+};
+
+CombinedStream.prototype.pipe = function(dest, options) {
+  Stream.prototype.pipe.call(this, dest, options);
+  this.resume();
+  return dest;
+};
+
+CombinedStream.prototype._getNext = function() {
+  this._currentStream = null;
+
+  if (this._insideLoop) {
+    this._pendingNext = true;
+    return; // defer call
+  }
+
+  this._insideLoop = true;
+  try {
+    do {
+      this._pendingNext = false;
+      this._realGetNext();
+    } while (this._pendingNext);
+  } finally {
+    this._insideLoop = false;
+  }
+};
+
+CombinedStream.prototype._realGetNext = function() {
+  var stream = this._streams.shift();
+
+
+  if (typeof stream == 'undefined') {
+    this.end();
+    return;
+  }
+
+  if (typeof stream !== 'function') {
+    this._pipeNext(stream);
+    return;
+  }
+
+  var getStream = stream;
+  getStream(function(stream) {
+    var isStreamLike = CombinedStream.isStreamLike(stream);
+    if (isStreamLike) {
+      stream.on('data', this._checkDataSize.bind(this));
+      this._handleErrors(stream);
+    }
+
+    this._pipeNext(stream);
+  }.bind(this));
+};
+
+CombinedStream.prototype._pipeNext = function(stream) {
+  this._currentStream = stream;
+
+  var isStreamLike = CombinedStream.isStreamLike(stream);
+  if (isStreamLike) {
+    stream.on('end', this._getNext.bind(this));
+    stream.pipe(this, {end: false});
+    return;
+  }
+
+  var value = stream;
+  this.write(value);
+  this._getNext();
+};
+
+CombinedStream.prototype._handleErrors = function(stream) {
+  var self = this;
+  stream.on('error', function(err) {
+    self._emitError(err);
+  });
+};
+
+CombinedStream.prototype.write = function(data) {
+  this.emit('data', data);
+};
+
+CombinedStream.prototype.pause = function() {
+  if (!this.pauseStreams) {
+    return;
+  }
+
+  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.pause) == 'function') this._currentStream.pause();
+  this.emit('pause');
+};
+
+CombinedStream.prototype.resume = function() {
+  if (!this._released) {
+    this._released = true;
+    this.writable = true;
+    this._getNext();
+  }
+
+  if(this.pauseStreams && this._currentStream && typeof(this._currentStream.resume) == 'function') this._currentStream.resume();
+  this.emit('resume');
+};
+
+CombinedStream.prototype.end = function() {
+  this._reset();
+  this.emit('end');
+};
+
+CombinedStream.prototype.destroy = function() {
+  this._reset();
+  this.emit('close');
+};
+
+CombinedStream.prototype._reset = function() {
+  this.writable = false;
+  this._streams = [];
+  this._currentStream = null;
+};
+
+CombinedStream.prototype._checkDataSize = function() {
+  this._updateDataSize();
+  if (this.dataSize <= this.maxDataSize) {
+    return;
+  }
+
+  var message =
+    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.';
+  this._emitError(new Error(message));
+};
+
+CombinedStream.prototype._updateDataSize = function() {
+  this.dataSize = 0;
+
+  var self = this;
+  this._streams.forEach(function(stream) {
+    if (!stream.dataSize) {
+      return;
+    }
+
+    self.dataSize += stream.dataSize;
+  });
+
+  if (this._currentStream && this._currentStream.dataSize) {
+    this.dataSize += this._currentStream.dataSize;
+  }
+};
+
+CombinedStream.prototype._emitError = function(err) {
+  this._reset();
+  this.emit('error', err);
+};
+
+
+/***/ }),
+
+/***/ 2710:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var Stream = (__nccwpck_require__(2203).Stream);
+var util = __nccwpck_require__(9023);
+
+module.exports = DelayedStream;
+function DelayedStream() {
+  this.source = null;
+  this.dataSize = 0;
+  this.maxDataSize = 1024 * 1024;
+  this.pauseStream = true;
+
+  this._maxDataSizeExceeded = false;
+  this._released = false;
+  this._bufferedEvents = [];
+}
+util.inherits(DelayedStream, Stream);
+
+DelayedStream.create = function(source, options) {
+  var delayedStream = new this();
+
+  options = options || {};
+  for (var option in options) {
+    delayedStream[option] = options[option];
+  }
+
+  delayedStream.source = source;
+
+  var realEmit = source.emit;
+  source.emit = function() {
+    delayedStream._handleEmit(arguments);
+    return realEmit.apply(source, arguments);
+  };
+
+  source.on('error', function() {});
+  if (delayedStream.pauseStream) {
+    source.pause();
+  }
+
+  return delayedStream;
+};
+
+Object.defineProperty(DelayedStream.prototype, 'readable', {
+  configurable: true,
+  enumerable: true,
+  get: function() {
+    return this.source.readable;
+  }
+});
+
+DelayedStream.prototype.setEncoding = function() {
+  return this.source.setEncoding.apply(this.source, arguments);
+};
+
+DelayedStream.prototype.resume = function() {
+  if (!this._released) {
+    this.release();
+  }
+
+  this.source.resume();
+};
+
+DelayedStream.prototype.pause = function() {
+  this.source.pause();
+};
+
+DelayedStream.prototype.release = function() {
+  this._released = true;
+
+  this._bufferedEvents.forEach(function(args) {
+    this.emit.apply(this, args);
+  }.bind(this));
+  this._bufferedEvents = [];
+};
+
+DelayedStream.prototype.pipe = function() {
+  var r = Stream.prototype.pipe.apply(this, arguments);
+  this.resume();
+  return r;
+};
+
+DelayedStream.prototype._handleEmit = function(args) {
+  if (this._released) {
+    this.emit.apply(this, args);
+    return;
+  }
+
+  if (args[0] === 'data') {
+    this.dataSize += args[1].length;
+    this._checkIfMaxDataSizeExceeded();
+  }
+
+  this._bufferedEvents.push(args);
+};
+
+DelayedStream.prototype._checkIfMaxDataSizeExceeded = function() {
+  if (this._maxDataSizeExceeded) {
+    return;
+  }
+
+  if (this.dataSize <= this.maxDataSize) {
+    return;
+  }
+
+  this._maxDataSizeExceeded = true;
+  var message =
+    'DelayedStream#maxDataSize of ' + this.maxDataSize + ' bytes exceeded.'
+  this.emit('error', new Error(message));
+};
+
+
+/***/ }),
+
+/***/ 6669:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var callBind = __nccwpck_require__(8705);
+var gOPD = __nccwpck_require__(3170);
+
+var hasProtoAccessor;
+try {
+	// eslint-disable-next-line no-extra-parens, no-proto
+	hasProtoAccessor = /** @type {{ __proto__?: typeof Array.prototype }} */ ([]).__proto__ === Array.prototype;
+} catch (e) {
+	if (!e || typeof e !== 'object' || !('code' in e) || e.code !== 'ERR_PROTO_ACCESS') {
+		throw e;
+	}
+}
+
+// eslint-disable-next-line no-extra-parens
+var desc = !!hasProtoAccessor && gOPD && gOPD(Object.prototype, /** @type {keyof typeof Object.prototype} */ ('__proto__'));
+
+var $Object = Object;
+var $getPrototypeOf = $Object.getPrototypeOf;
+
+/** @type {import('./get')} */
+module.exports = desc && typeof desc.get === 'function'
+	? callBind([desc.get])
+	: typeof $getPrototypeOf === 'function'
+		? /** @type {import('./get')} */ function getDunder(value) {
+			// eslint-disable-next-line eqeqeq
+			return $getPrototypeOf(value == null ? value : $Object(value));
+		}
+		: false;
+
+
+/***/ }),
+
+/***/ 9094:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('.')} */
+var $defineProperty = Object.defineProperty || false;
+if ($defineProperty) {
+	try {
+		$defineProperty({}, 'a', { value: 1 });
+	} catch (e) {
+		// IE 8 has a broken defineProperty
+		$defineProperty = false;
+	}
+}
+
+module.exports = $defineProperty;
+
+
+/***/ }),
+
+/***/ 3056:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./eval')} */
+module.exports = EvalError;
+
+
+/***/ }),
+
+/***/ 1620:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('.')} */
+module.exports = Error;
+
+
+/***/ }),
+
+/***/ 4585:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./range')} */
+module.exports = RangeError;
+
+
+/***/ }),
+
+/***/ 6905:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./ref')} */
+module.exports = ReferenceError;
+
+
+/***/ }),
+
+/***/ 105:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./syntax')} */
+module.exports = SyntaxError;
+
+
+/***/ }),
+
+/***/ 3314:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./type')} */
+module.exports = TypeError;
+
+
+/***/ }),
+
+/***/ 2578:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./uri')} */
+module.exports = URIError;
+
+
+/***/ }),
+
+/***/ 5399:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('.')} */
+module.exports = Object;
+
+
+/***/ }),
+
+/***/ 8700:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var GetIntrinsic = __nccwpck_require__(470);
+
+var $defineProperty = GetIntrinsic('%Object.defineProperty%', true);
+
+var hasToStringTag = __nccwpck_require__(5479)();
+var hasOwn = __nccwpck_require__(4076);
+var $TypeError = __nccwpck_require__(3314);
+
+var toStringTag = hasToStringTag ? Symbol.toStringTag : null;
+
+/** @type {import('.')} */
+module.exports = function setToStringTag(object, value) {
+	var overrideIfSet = arguments.length > 2 && !!arguments[2] && arguments[2].force;
+	var nonConfigurable = arguments.length > 2 && !!arguments[2] && arguments[2].nonConfigurable;
+	if (
+		(typeof overrideIfSet !== 'undefined' && typeof overrideIfSet !== 'boolean')
+		|| (typeof nonConfigurable !== 'undefined' && typeof nonConfigurable !== 'boolean')
+	) {
+		throw new $TypeError('if provided, the `overrideIfSet` and `nonConfigurable` options must be booleans');
+	}
+	if (toStringTag && (overrideIfSet || !hasOwn(object, toStringTag))) {
+		if ($defineProperty) {
+			$defineProperty(object, toStringTag, {
+				configurable: !nonConfigurable,
+				enumerable: false,
+				value: value,
+				writable: false
+			});
+		} else {
+			object[toStringTag] = value; // eslint-disable-line no-param-reassign
+		}
+	}
+};
+
+
+/***/ }),
+
+/***/ 4778:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var debug;
+
+module.exports = function () {
+  if (!debug) {
+    try {
+      /* eslint global-require: off */
+      debug = __nccwpck_require__(8422)("follow-redirects");
+    }
+    catch (error) { /* */ }
+    if (typeof debug !== "function") {
+      debug = function () { /* */ };
+    }
+  }
+  debug.apply(null, arguments);
+};
+
+
+/***/ }),
+
+/***/ 1573:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+var url = __nccwpck_require__(7016);
+var URL = url.URL;
+var http = __nccwpck_require__(8611);
+var https = __nccwpck_require__(5692);
+var Writable = (__nccwpck_require__(2203).Writable);
+var assert = __nccwpck_require__(2613);
+var debug = __nccwpck_require__(4778);
+
+// Preventive platform detection
+// istanbul ignore next
+(function detectUnsupportedEnvironment() {
+  var looksLikeNode = typeof process !== "undefined";
+  var looksLikeBrowser = typeof window !== "undefined" && typeof document !== "undefined";
+  var looksLikeV8 = isFunction(Error.captureStackTrace);
+  if (!looksLikeNode && (looksLikeBrowser || !looksLikeV8)) {
+    console.warn("The follow-redirects package should be excluded from browser builds.");
+  }
+}());
+
+// Whether to use the native URL object or the legacy url module
+var useNativeURL = false;
+try {
+  assert(new URL(""));
+}
+catch (error) {
+  useNativeURL = error.code === "ERR_INVALID_URL";
+}
+
+// URL fields to preserve in copy operations
+var preservedUrlFields = [
+  "auth",
+  "host",
+  "hostname",
+  "href",
+  "path",
+  "pathname",
+  "port",
+  "protocol",
+  "query",
+  "search",
+  "hash",
+];
+
+// Create handlers that pass events from native requests
+var events = ["abort", "aborted", "connect", "error", "socket", "timeout"];
+var eventHandlers = Object.create(null);
+events.forEach(function (event) {
+  eventHandlers[event] = function (arg1, arg2, arg3) {
+    this._redirectable.emit(event, arg1, arg2, arg3);
+  };
+});
+
+// Error types with codes
+var InvalidUrlError = createErrorType(
+  "ERR_INVALID_URL",
+  "Invalid URL",
+  TypeError
+);
+var RedirectionError = createErrorType(
+  "ERR_FR_REDIRECTION_FAILURE",
+  "Redirected request failed"
+);
+var TooManyRedirectsError = createErrorType(
+  "ERR_FR_TOO_MANY_REDIRECTS",
+  "Maximum number of redirects exceeded",
+  RedirectionError
+);
+var MaxBodyLengthExceededError = createErrorType(
+  "ERR_FR_MAX_BODY_LENGTH_EXCEEDED",
+  "Request body larger than maxBodyLength limit"
+);
+var WriteAfterEndError = createErrorType(
+  "ERR_STREAM_WRITE_AFTER_END",
+  "write after end"
+);
+
+// istanbul ignore next
+var destroy = Writable.prototype.destroy || noop;
+
+// An HTTP(S) request that can be redirected
+function RedirectableRequest(options, responseCallback) {
+  // Initialize the request
+  Writable.call(this);
+  this._sanitizeOptions(options);
+  this._options = options;
+  this._ended = false;
+  this._ending = false;
+  this._redirectCount = 0;
+  this._redirects = [];
+  this._requestBodyLength = 0;
+  this._requestBodyBuffers = [];
+
+  // Attach a callback if passed
+  if (responseCallback) {
+    this.on("response", responseCallback);
+  }
+
+  // React to responses of native requests
+  var self = this;
+  this._onNativeResponse = function (response) {
+    try {
+      self._processResponse(response);
+    }
+    catch (cause) {
+      self.emit("error", cause instanceof RedirectionError ?
+        cause : new RedirectionError({ cause: cause }));
+    }
+  };
+
+  // Perform the first request
+  this._performRequest();
+}
+RedirectableRequest.prototype = Object.create(Writable.prototype);
+
+RedirectableRequest.prototype.abort = function () {
+  destroyRequest(this._currentRequest);
+  this._currentRequest.abort();
+  this.emit("abort");
+};
+
+RedirectableRequest.prototype.destroy = function (error) {
+  destroyRequest(this._currentRequest, error);
+  destroy.call(this, error);
+  return this;
+};
+
+// Writes buffered data to the current native request
+RedirectableRequest.prototype.write = function (data, encoding, callback) {
+  // Writing is not allowed if end has been called
+  if (this._ending) {
+    throw new WriteAfterEndError();
+  }
+
+  // Validate input and shift parameters if necessary
+  if (!isString(data) && !isBuffer(data)) {
+    throw new TypeError("data should be a string, Buffer or Uint8Array");
+  }
+  if (isFunction(encoding)) {
+    callback = encoding;
+    encoding = null;
+  }
+
+  // Ignore empty buffers, since writing them doesn't invoke the callback
+  // https://github.com/nodejs/node/issues/22066
+  if (data.length === 0) {
+    if (callback) {
+      callback();
+    }
+    return;
+  }
+  // Only write when we don't exceed the maximum body length
+  if (this._requestBodyLength + data.length <= this._options.maxBodyLength) {
+    this._requestBodyLength += data.length;
+    this._requestBodyBuffers.push({ data: data, encoding: encoding });
+    this._currentRequest.write(data, encoding, callback);
+  }
+  // Error when we exceed the maximum body length
+  else {
+    this.emit("error", new MaxBodyLengthExceededError());
+    this.abort();
+  }
+};
+
+// Ends the current native request
+RedirectableRequest.prototype.end = function (data, encoding, callback) {
+  // Shift parameters if necessary
+  if (isFunction(data)) {
+    callback = data;
+    data = encoding = null;
+  }
+  else if (isFunction(encoding)) {
+    callback = encoding;
+    encoding = null;
+  }
+
+  // Write data if needed and end
+  if (!data) {
+    this._ended = this._ending = true;
+    this._currentRequest.end(null, null, callback);
+  }
+  else {
+    var self = this;
+    var currentRequest = this._currentRequest;
+    this.write(data, encoding, function () {
+      self._ended = true;
+      currentRequest.end(null, null, callback);
+    });
+    this._ending = true;
+  }
+};
+
+// Sets a header value on the current native request
+RedirectableRequest.prototype.setHeader = function (name, value) {
+  this._options.headers[name] = value;
+  this._currentRequest.setHeader(name, value);
+};
+
+// Clears a header value on the current native request
+RedirectableRequest.prototype.removeHeader = function (name) {
+  delete this._options.headers[name];
+  this._currentRequest.removeHeader(name);
+};
+
+// Global timeout for all underlying requests
+RedirectableRequest.prototype.setTimeout = function (msecs, callback) {
+  var self = this;
+
+  // Destroys the socket on timeout
+  function destroyOnTimeout(socket) {
+    socket.setTimeout(msecs);
+    socket.removeListener("timeout", socket.destroy);
+    socket.addListener("timeout", socket.destroy);
+  }
+
+  // Sets up a timer to trigger a timeout event
+  function startTimer(socket) {
+    if (self._timeout) {
+      clearTimeout(self._timeout);
+    }
+    self._timeout = setTimeout(function () {
+      self.emit("timeout");
+      clearTimer();
+    }, msecs);
+    destroyOnTimeout(socket);
+  }
+
+  // Stops a timeout from triggering
+  function clearTimer() {
+    // Clear the timeout
+    if (self._timeout) {
+      clearTimeout(self._timeout);
+      self._timeout = null;
+    }
+
+    // Clean up all attached listeners
+    self.removeListener("abort", clearTimer);
+    self.removeListener("error", clearTimer);
+    self.removeListener("response", clearTimer);
+    self.removeListener("close", clearTimer);
+    if (callback) {
+      self.removeListener("timeout", callback);
+    }
+    if (!self.socket) {
+      self._currentRequest.removeListener("socket", startTimer);
+    }
+  }
+
+  // Attach callback if passed
+  if (callback) {
+    this.on("timeout", callback);
+  }
+
+  // Start the timer if or when the socket is opened
+  if (this.socket) {
+    startTimer(this.socket);
+  }
+  else {
+    this._currentRequest.once("socket", startTimer);
+  }
+
+  // Clean up on events
+  this.on("socket", destroyOnTimeout);
+  this.on("abort", clearTimer);
+  this.on("error", clearTimer);
+  this.on("response", clearTimer);
+  this.on("close", clearTimer);
+
+  return this;
+};
+
+// Proxy all other public ClientRequest methods
+[
+  "flushHeaders", "getHeader",
+  "setNoDelay", "setSocketKeepAlive",
+].forEach(function (method) {
+  RedirectableRequest.prototype[method] = function (a, b) {
+    return this._currentRequest[method](a, b);
+  };
+});
+
+// Proxy all public ClientRequest properties
+["aborted", "connection", "socket"].forEach(function (property) {
+  Object.defineProperty(RedirectableRequest.prototype, property, {
+    get: function () { return this._currentRequest[property]; },
+  });
+});
+
+RedirectableRequest.prototype._sanitizeOptions = function (options) {
+  // Ensure headers are always present
+  if (!options.headers) {
+    options.headers = {};
+  }
+
+  // Since http.request treats host as an alias of hostname,
+  // but the url module interprets host as hostname plus port,
+  // eliminate the host property to avoid confusion.
+  if (options.host) {
+    // Use hostname if set, because it has precedence
+    if (!options.hostname) {
+      options.hostname = options.host;
+    }
+    delete options.host;
+  }
+
+  // Complete the URL object when necessary
+  if (!options.pathname && options.path) {
+    var searchPos = options.path.indexOf("?");
+    if (searchPos < 0) {
+      options.pathname = options.path;
+    }
+    else {
+      options.pathname = options.path.substring(0, searchPos);
+      options.search = options.path.substring(searchPos);
+    }
+  }
+};
+
+
+// Executes the next native request (initial or redirect)
+RedirectableRequest.prototype._performRequest = function () {
+  // Load the native protocol
+  var protocol = this._options.protocol;
+  var nativeProtocol = this._options.nativeProtocols[protocol];
+  if (!nativeProtocol) {
+    throw new TypeError("Unsupported protocol " + protocol);
+  }
+
+  // If specified, use the agent corresponding to the protocol
+  // (HTTP and HTTPS use different types of agents)
+  if (this._options.agents) {
+    var scheme = protocol.slice(0, -1);
+    this._options.agent = this._options.agents[scheme];
+  }
+
+  // Create the native request and set up its event handlers
+  var request = this._currentRequest =
+        nativeProtocol.request(this._options, this._onNativeResponse);
+  request._redirectable = this;
+  for (var event of events) {
+    request.on(event, eventHandlers[event]);
+  }
+
+  // RFC7230§5.3.1: When making a request directly to an origin server, […]
+  // a client MUST send only the absolute path […] as the request-target.
+  this._currentUrl = /^\//.test(this._options.path) ?
+    url.format(this._options) :
+    // When making a request to a proxy, […]
+    // a client MUST send the target URI in absolute-form […].
+    this._options.path;
+
+  // End a redirected request
+  // (The first request must be ended explicitly with RedirectableRequest#end)
+  if (this._isRedirect) {
+    // Write the request entity and end
+    var i = 0;
+    var self = this;
+    var buffers = this._requestBodyBuffers;
+    (function writeNext(error) {
+      // Only write if this request has not been redirected yet
+      // istanbul ignore else
+      if (request === self._currentRequest) {
+        // Report any write errors
+        // istanbul ignore if
+        if (error) {
+          self.emit("error", error);
+        }
+        // Write the next buffer if there are still left
+        else if (i < buffers.length) {
+          var buffer = buffers[i++];
+          // istanbul ignore else
+          if (!request.finished) {
+            request.write(buffer.data, buffer.encoding, writeNext);
+          }
+        }
+        // End the request if `end` has been called on us
+        else if (self._ended) {
+          request.end();
+        }
+      }
+    }());
+  }
+};
+
+// Processes a response from the current native request
+RedirectableRequest.prototype._processResponse = function (response) {
+  // Store the redirected response
+  var statusCode = response.statusCode;
+  if (this._options.trackRedirects) {
+    this._redirects.push({
+      url: this._currentUrl,
+      headers: response.headers,
+      statusCode: statusCode,
+    });
+  }
+
+  // RFC7231§6.4: The 3xx (Redirection) class of status code indicates
+  // that further action needs to be taken by the user agent in order to
+  // fulfill the request. If a Location header field is provided,
+  // the user agent MAY automatically redirect its request to the URI
+  // referenced by the Location field value,
+  // even if the specific status code is not understood.
+
+  // If the response is not a redirect; return it as-is
+  var location = response.headers.location;
+  if (!location || this._options.followRedirects === false ||
+      statusCode < 300 || statusCode >= 400) {
+    response.responseUrl = this._currentUrl;
+    response.redirects = this._redirects;
+    this.emit("response", response);
+
+    // Clean up
+    this._requestBodyBuffers = [];
+    return;
+  }
+
+  // The response is a redirect, so abort the current request
+  destroyRequest(this._currentRequest);
+  // Discard the remainder of the response to avoid waiting for data
+  response.destroy();
+
+  // RFC7231§6.4: A client SHOULD detect and intervene
+  // in cyclical redirections (i.e., "infinite" redirection loops).
+  if (++this._redirectCount > this._options.maxRedirects) {
+    throw new TooManyRedirectsError();
+  }
+
+  // Store the request headers if applicable
+  var requestHeaders;
+  var beforeRedirect = this._options.beforeRedirect;
+  if (beforeRedirect) {
+    requestHeaders = Object.assign({
+      // The Host header was set by nativeProtocol.request
+      Host: response.req.getHeader("host"),
+    }, this._options.headers);
+  }
+
+  // RFC7231§6.4: Automatic redirection needs to done with
+  // care for methods not known to be safe, […]
+  // RFC7231§6.4.2–3: For historical reasons, a user agent MAY change
+  // the request method from POST to GET for the subsequent request.
+  var method = this._options.method;
+  if ((statusCode === 301 || statusCode === 302) && this._options.method === "POST" ||
+      // RFC7231§6.4.4: The 303 (See Other) status code indicates that
+      // the server is redirecting the user agent to a different resource […]
+      // A user agent can perform a retrieval request targeting that URI
+      // (a GET or HEAD request if using HTTP) […]
+      (statusCode === 303) && !/^(?:GET|HEAD)$/.test(this._options.method)) {
+    this._options.method = "GET";
+    // Drop a possible entity and headers related to it
+    this._requestBodyBuffers = [];
+    removeMatchingHeaders(/^content-/i, this._options.headers);
+  }
+
+  // Drop the Host header, as the redirect might lead to a different host
+  var currentHostHeader = removeMatchingHeaders(/^host$/i, this._options.headers);
+
+  // If the redirect is relative, carry over the host of the last request
+  var currentUrlParts = parseUrl(this._currentUrl);
+  var currentHost = currentHostHeader || currentUrlParts.host;
+  var currentUrl = /^\w+:/.test(location) ? this._currentUrl :
+    url.format(Object.assign(currentUrlParts, { host: currentHost }));
+
+  // Create the redirected request
+  var redirectUrl = resolveUrl(location, currentUrl);
+  debug("redirecting to", redirectUrl.href);
+  this._isRedirect = true;
+  spreadUrlObject(redirectUrl, this._options);
+
+  // Drop confidential headers when redirecting to a less secure protocol
+  // or to a different domain that is not a superdomain
+  if (redirectUrl.protocol !== currentUrlParts.protocol &&
+     redirectUrl.protocol !== "https:" ||
+     redirectUrl.host !== currentHost &&
+     !isSubdomain(redirectUrl.host, currentHost)) {
+    removeMatchingHeaders(/^(?:(?:proxy-)?authorization|cookie)$/i, this._options.headers);
+  }
+
+  // Evaluate the beforeRedirect callback
+  if (isFunction(beforeRedirect)) {
+    var responseDetails = {
+      headers: response.headers,
+      statusCode: statusCode,
+    };
+    var requestDetails = {
+      url: currentUrl,
+      method: method,
+      headers: requestHeaders,
+    };
+    beforeRedirect(this._options, responseDetails, requestDetails);
+    this._sanitizeOptions(this._options);
+  }
+
+  // Perform the redirected request
+  this._performRequest();
+};
+
+// Wraps the key/value object of protocols with redirect functionality
+function wrap(protocols) {
+  // Default settings
+  var exports = {
+    maxRedirects: 21,
+    maxBodyLength: 10 * 1024 * 1024,
+  };
+
+  // Wrap each protocol
+  var nativeProtocols = {};
+  Object.keys(protocols).forEach(function (scheme) {
+    var protocol = scheme + ":";
+    var nativeProtocol = nativeProtocols[protocol] = protocols[scheme];
+    var wrappedProtocol = exports[scheme] = Object.create(nativeProtocol);
+
+    // Executes a request, following redirects
+    function request(input, options, callback) {
+      // Parse parameters, ensuring that input is an object
+      if (isURL(input)) {
+        input = spreadUrlObject(input);
+      }
+      else if (isString(input)) {
+        input = spreadUrlObject(parseUrl(input));
+      }
+      else {
+        callback = options;
+        options = validateUrl(input);
+        input = { protocol: protocol };
+      }
+      if (isFunction(options)) {
+        callback = options;
+        options = null;
+      }
+
+      // Set defaults
+      options = Object.assign({
+        maxRedirects: exports.maxRedirects,
+        maxBodyLength: exports.maxBodyLength,
+      }, input, options);
+      options.nativeProtocols = nativeProtocols;
+      if (!isString(options.host) && !isString(options.hostname)) {
+        options.hostname = "::1";
+      }
+
+      assert.equal(options.protocol, protocol, "protocol mismatch");
+      debug("options", options);
+      return new RedirectableRequest(options, callback);
+    }
+
+    // Executes a GET request, following redirects
+    function get(input, options, callback) {
+      var wrappedRequest = wrappedProtocol.request(input, options, callback);
+      wrappedRequest.end();
+      return wrappedRequest;
+    }
+
+    // Expose the properties on the wrapped protocol
+    Object.defineProperties(wrappedProtocol, {
+      request: { value: request, configurable: true, enumerable: true, writable: true },
+      get: { value: get, configurable: true, enumerable: true, writable: true },
+    });
+  });
+  return exports;
+}
+
+function noop() { /* empty */ }
+
+function parseUrl(input) {
+  var parsed;
+  // istanbul ignore else
+  if (useNativeURL) {
+    parsed = new URL(input);
+  }
+  else {
+    // Ensure the URL is valid and absolute
+    parsed = validateUrl(url.parse(input));
+    if (!isString(parsed.protocol)) {
+      throw new InvalidUrlError({ input });
+    }
+  }
+  return parsed;
+}
+
+function resolveUrl(relative, base) {
+  // istanbul ignore next
+  return useNativeURL ? new URL(relative, base) : parseUrl(url.resolve(base, relative));
+}
+
+function validateUrl(input) {
+  if (/^\[/.test(input.hostname) && !/^\[[:0-9a-f]+\]$/i.test(input.hostname)) {
+    throw new InvalidUrlError({ input: input.href || input });
+  }
+  if (/^\[/.test(input.host) && !/^\[[:0-9a-f]+\](:\d+)?$/i.test(input.host)) {
+    throw new InvalidUrlError({ input: input.href || input });
+  }
+  return input;
+}
+
+function spreadUrlObject(urlObject, target) {
+  var spread = target || {};
+  for (var key of preservedUrlFields) {
+    spread[key] = urlObject[key];
+  }
+
+  // Fix IPv6 hostname
+  if (spread.hostname.startsWith("[")) {
+    spread.hostname = spread.hostname.slice(1, -1);
+  }
+  // Ensure port is a number
+  if (spread.port !== "") {
+    spread.port = Number(spread.port);
+  }
+  // Concatenate path
+  spread.path = spread.search ? spread.pathname + spread.search : spread.pathname;
+
+  return spread;
+}
+
+function removeMatchingHeaders(regex, headers) {
+  var lastValue;
+  for (var header in headers) {
+    if (regex.test(header)) {
+      lastValue = headers[header];
+      delete headers[header];
+    }
+  }
+  return (lastValue === null || typeof lastValue === "undefined") ?
+    undefined : String(lastValue).trim();
+}
+
+function createErrorType(code, message, baseClass) {
+  // Create constructor
+  function CustomError(properties) {
+    // istanbul ignore else
+    if (isFunction(Error.captureStackTrace)) {
+      Error.captureStackTrace(this, this.constructor);
+    }
+    Object.assign(this, properties || {});
+    this.code = code;
+    this.message = this.cause ? message + ": " + this.cause.message : message;
+  }
+
+  // Attach constructor and set default properties
+  CustomError.prototype = new (baseClass || Error)();
+  Object.defineProperties(CustomError.prototype, {
+    constructor: {
+      value: CustomError,
+      enumerable: false,
+    },
+    name: {
+      value: "Error [" + code + "]",
+      enumerable: false,
+    },
+  });
+  return CustomError;
+}
+
+function destroyRequest(request, error) {
+  for (var event of events) {
+    request.removeListener(event, eventHandlers[event]);
+  }
+  request.on("error", noop);
+  request.destroy(error);
+}
+
+function isSubdomain(subdomain, domain) {
+  assert(isString(subdomain) && isString(domain));
+  var dot = subdomain.length - domain.length - 1;
+  return dot > 0 && subdomain[dot] === "." && subdomain.endsWith(domain);
+}
+
+function isString(value) {
+  return typeof value === "string" || value instanceof String;
+}
+
+function isFunction(value) {
+  return typeof value === "function";
+}
+
+function isBuffer(value) {
+  return typeof value === "object" && ("length" in value);
+}
+
+function isURL(value) {
+  return URL && value instanceof URL;
+}
+
+// Exports
+module.exports = wrap({ http: http, https: https });
+module.exports.wrap = wrap;
+
+
+/***/ }),
+
+/***/ 6454:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var CombinedStream = __nccwpck_require__(5630);
+var util = __nccwpck_require__(9023);
+var path = __nccwpck_require__(6928);
+var http = __nccwpck_require__(8611);
+var https = __nccwpck_require__(5692);
+var parseUrl = (__nccwpck_require__(7016).parse);
+var fs = __nccwpck_require__(9896);
+var Stream = (__nccwpck_require__(2203).Stream);
+var crypto = __nccwpck_require__(6982);
+var mime = __nccwpck_require__(4096);
+var asynckit = __nccwpck_require__(1324);
+var setToStringTag = __nccwpck_require__(8700);
+var hasOwn = __nccwpck_require__(4076);
+var populate = __nccwpck_require__(1835);
+
+/**
+ * Create readable "multipart/form-data" streams.
+ * Can be used to submit forms
+ * and file uploads to other web applications.
+ *
+ * @constructor
+ * @param {object} options - Properties to be added/overriden for FormData and CombinedStream
+ */
+function FormData(options) {
+  if (!(this instanceof FormData)) {
+    return new FormData(options);
+  }
+
+  this._overheadLength = 0;
+  this._valueLength = 0;
+  this._valuesToMeasure = [];
+
+  CombinedStream.call(this);
+
+  options = options || {}; // eslint-disable-line no-param-reassign
+  for (var option in options) { // eslint-disable-line no-restricted-syntax
+    this[option] = options[option];
+  }
+}
+
+// make it a Stream
+util.inherits(FormData, CombinedStream);
+
+FormData.LINE_BREAK = '\r\n';
+FormData.DEFAULT_CONTENT_TYPE = 'application/octet-stream';
+
+FormData.prototype.append = function (field, value, options) {
+  options = options || {}; // eslint-disable-line no-param-reassign
+
+  // allow filename as single option
+  if (typeof options === 'string') {
+    options = { filename: options }; // eslint-disable-line no-param-reassign
+  }
+
+  var append = CombinedStream.prototype.append.bind(this);
+
+  // all that streamy business can't handle numbers
+  if (typeof value === 'number' || value == null) {
+    value = String(value); // eslint-disable-line no-param-reassign
+  }
+
+  // https://github.com/felixge/node-form-data/issues/38
+  if (Array.isArray(value)) {
+    /*
+     * Please convert your array into string
+     * the way web server expects it
+     */
+    this._error(new Error('Arrays are not supported.'));
+    return;
+  }
+
+  var header = this._multiPartHeader(field, value, options);
+  var footer = this._multiPartFooter();
+
+  append(header);
+  append(value);
+  append(footer);
+
+  // pass along options.knownLength
+  this._trackLength(header, value, options);
+};
+
+FormData.prototype._trackLength = function (header, value, options) {
+  var valueLength = 0;
+
+  /*
+   * used w/ getLengthSync(), when length is known.
+   * e.g. for streaming directly from a remote server,
+   * w/ a known file a size, and not wanting to wait for
+   * incoming file to finish to get its size.
+   */
+  if (options.knownLength != null) {
+    valueLength += Number(options.knownLength);
+  } else if (Buffer.isBuffer(value)) {
+    valueLength = value.length;
+  } else if (typeof value === 'string') {
+    valueLength = Buffer.byteLength(value);
+  }
+
+  this._valueLength += valueLength;
+
+  // @check why add CRLF? does this account for custom/multiple CRLFs?
+  this._overheadLength += Buffer.byteLength(header) + FormData.LINE_BREAK.length;
+
+  // empty or either doesn't have path or not an http response or not a stream
+  if (!value || (!value.path && !(value.readable && hasOwn(value, 'httpVersion')) && !(value instanceof Stream))) {
+    return;
+  }
+
+  // no need to bother with the length
+  if (!options.knownLength) {
+    this._valuesToMeasure.push(value);
+  }
+};
+
+FormData.prototype._lengthRetriever = function (value, callback) {
+  if (hasOwn(value, 'fd')) {
+    // take read range into a account
+    // `end` = Infinity –> read file till the end
+    //
+    // TODO: Looks like there is bug in Node fs.createReadStream
+    // it doesn't respect `end` options without `start` options
+    // Fix it when node fixes it.
+    // https://github.com/joyent/node/issues/7819
+    if (value.end != undefined && value.end != Infinity && value.start != undefined) {
+      // when end specified
+      // no need to calculate range
+      // inclusive, starts with 0
+      callback(null, value.end + 1 - (value.start ? value.start : 0)); // eslint-disable-line callback-return
+
+      // not that fast snoopy
+    } else {
+      // still need to fetch file size from fs
+      fs.stat(value.path, function (err, stat) {
+        if (err) {
+          callback(err);
+          return;
+        }
+
+        // update final size based on the range options
+        var fileSize = stat.size - (value.start ? value.start : 0);
+        callback(null, fileSize);
+      });
+    }
+
+    // or http response
+  } else if (hasOwn(value, 'httpVersion')) {
+    callback(null, Number(value.headers['content-length'])); // eslint-disable-line callback-return
+
+    // or request stream http://github.com/mikeal/request
+  } else if (hasOwn(value, 'httpModule')) {
+    // wait till response come back
+    value.on('response', function (response) {
+      value.pause();
+      callback(null, Number(response.headers['content-length']));
+    });
+    value.resume();
+
+    // something else
+  } else {
+    callback('Unknown stream'); // eslint-disable-line callback-return
+  }
+};
+
+FormData.prototype._multiPartHeader = function (field, value, options) {
+  /*
+   * custom header specified (as string)?
+   * it becomes responsible for boundary
+   * (e.g. to handle extra CRLFs on .NET servers)
+   */
+  if (typeof options.header === 'string') {
+    return options.header;
+  }
+
+  var contentDisposition = this._getContentDisposition(value, options);
+  var contentType = this._getContentType(value, options);
+
+  var contents = '';
+  var headers = {
+    // add custom disposition as third element or keep it two elements if not
+    'Content-Disposition': ['form-data', 'name="' + field + '"'].concat(contentDisposition || []),
+    // if no content type. allow it to be empty array
+    'Content-Type': [].concat(contentType || [])
+  };
+
+  // allow custom headers.
+  if (typeof options.header === 'object') {
+    populate(headers, options.header);
+  }
+
+  var header;
+  for (var prop in headers) { // eslint-disable-line no-restricted-syntax
+    if (hasOwn(headers, prop)) {
+      header = headers[prop];
+
+      // skip nullish headers.
+      if (header == null) {
+        continue; // eslint-disable-line no-restricted-syntax, no-continue
+      }
+
+      // convert all headers to arrays.
+      if (!Array.isArray(header)) {
+        header = [header];
+      }
+
+      // add non-empty headers.
+      if (header.length) {
+        contents += prop + ': ' + header.join('; ') + FormData.LINE_BREAK;
+      }
+    }
+  }
+
+  return '--' + this.getBoundary() + FormData.LINE_BREAK + contents + FormData.LINE_BREAK;
+};
+
+FormData.prototype._getContentDisposition = function (value, options) { // eslint-disable-line consistent-return
+  var filename;
+
+  if (typeof options.filepath === 'string') {
+    // custom filepath for relative paths
+    filename = path.normalize(options.filepath).replace(/\\/g, '/');
+  } else if (options.filename || (value && (value.name || value.path))) {
+    /*
+     * custom filename take precedence
+     * formidable and the browser add a name property
+     * fs- and request- streams have path property
+     */
+    filename = path.basename(options.filename || (value && (value.name || value.path)));
+  } else if (value && value.readable && hasOwn(value, 'httpVersion')) {
+    // or try http response
+    filename = path.basename(value.client._httpMessage.path || '');
+  }
+
+  if (filename) {
+    return 'filename="' + filename + '"';
+  }
+};
+
+FormData.prototype._getContentType = function (value, options) {
+  // use custom content-type above all
+  var contentType = options.contentType;
+
+  // or try `name` from formidable, browser
+  if (!contentType && value && value.name) {
+    contentType = mime.lookup(value.name);
+  }
+
+  // or try `path` from fs-, request- streams
+  if (!contentType && value && value.path) {
+    contentType = mime.lookup(value.path);
+  }
+
+  // or if it's http-reponse
+  if (!contentType && value && value.readable && hasOwn(value, 'httpVersion')) {
+    contentType = value.headers['content-type'];
+  }
+
+  // or guess it from the filepath or filename
+  if (!contentType && (options.filepath || options.filename)) {
+    contentType = mime.lookup(options.filepath || options.filename);
+  }
+
+  // fallback to the default content type if `value` is not simple value
+  if (!contentType && value && typeof value === 'object') {
+    contentType = FormData.DEFAULT_CONTENT_TYPE;
+  }
+
+  return contentType;
+};
+
+FormData.prototype._multiPartFooter = function () {
+  return function (next) {
+    var footer = FormData.LINE_BREAK;
+
+    var lastPart = this._streams.length === 0;
+    if (lastPart) {
+      footer += this._lastBoundary();
+    }
+
+    next(footer);
+  }.bind(this);
+};
+
+FormData.prototype._lastBoundary = function () {
+  return '--' + this.getBoundary() + '--' + FormData.LINE_BREAK;
+};
+
+FormData.prototype.getHeaders = function (userHeaders) {
+  var header;
+  var formHeaders = {
+    'content-type': 'multipart/form-data; boundary=' + this.getBoundary()
+  };
+
+  for (header in userHeaders) { // eslint-disable-line no-restricted-syntax
+    if (hasOwn(userHeaders, header)) {
+      formHeaders[header.toLowerCase()] = userHeaders[header];
+    }
+  }
+
+  return formHeaders;
+};
+
+FormData.prototype.setBoundary = function (boundary) {
+  if (typeof boundary !== 'string') {
+    throw new TypeError('FormData boundary must be a string');
+  }
+  this._boundary = boundary;
+};
+
+FormData.prototype.getBoundary = function () {
+  if (!this._boundary) {
+    this._generateBoundary();
+  }
+
+  return this._boundary;
+};
+
+FormData.prototype.getBuffer = function () {
+  var dataBuffer = new Buffer.alloc(0); // eslint-disable-line new-cap
+  var boundary = this.getBoundary();
+
+  // Create the form content. Add Line breaks to the end of data.
+  for (var i = 0, len = this._streams.length; i < len; i++) {
+    if (typeof this._streams[i] !== 'function') {
+      // Add content to the buffer.
+      if (Buffer.isBuffer(this._streams[i])) {
+        dataBuffer = Buffer.concat([dataBuffer, this._streams[i]]);
+      } else {
+        dataBuffer = Buffer.concat([dataBuffer, Buffer.from(this._streams[i])]);
+      }
+
+      // Add break after content.
+      if (typeof this._streams[i] !== 'string' || this._streams[i].substring(2, boundary.length + 2) !== boundary) {
+        dataBuffer = Buffer.concat([dataBuffer, Buffer.from(FormData.LINE_BREAK)]);
+      }
+    }
+  }
+
+  // Add the footer and return the Buffer object.
+  return Buffer.concat([dataBuffer, Buffer.from(this._lastBoundary())]);
+};
+
+FormData.prototype._generateBoundary = function () {
+  // This generates a 50 character boundary similar to those used by Firefox.
+
+  // They are optimized for boyer-moore parsing.
+  this._boundary = '--------------------------' + crypto.randomBytes(12).toString('hex');
+};
+
+// Note: getLengthSync DOESN'T calculate streams length
+// As workaround one can calculate file size manually and add it as knownLength option
+FormData.prototype.getLengthSync = function () {
+  var knownLength = this._overheadLength + this._valueLength;
+
+  // Don't get confused, there are 3 "internal" streams for each keyval pair so it basically checks if there is any value added to the form
+  if (this._streams.length) {
+    knownLength += this._lastBoundary().length;
+  }
+
+  // https://github.com/form-data/form-data/issues/40
+  if (!this.hasKnownLength()) {
+    /*
+     * Some async length retrievers are present
+     * therefore synchronous length calculation is false.
+     * Please use getLength(callback) to get proper length
+     */
+    this._error(new Error('Cannot calculate proper length in synchronous way.'));
+  }
+
+  return knownLength;
+};
+
+// Public API to check if length of added values is known
+// https://github.com/form-data/form-data/issues/196
+// https://github.com/form-data/form-data/issues/262
+FormData.prototype.hasKnownLength = function () {
+  var hasKnownLength = true;
+
+  if (this._valuesToMeasure.length) {
+    hasKnownLength = false;
+  }
+
+  return hasKnownLength;
+};
+
+FormData.prototype.getLength = function (cb) {
+  var knownLength = this._overheadLength + this._valueLength;
+
+  if (this._streams.length) {
+    knownLength += this._lastBoundary().length;
+  }
+
+  if (!this._valuesToMeasure.length) {
+    process.nextTick(cb.bind(this, null, knownLength));
+    return;
+  }
+
+  asynckit.parallel(this._valuesToMeasure, this._lengthRetriever, function (err, values) {
+    if (err) {
+      cb(err);
+      return;
+    }
+
+    values.forEach(function (length) {
+      knownLength += length;
+    });
+
+    cb(null, knownLength);
+  });
+};
+
+FormData.prototype.submit = function (params, cb) {
+  var request;
+  var options;
+  var defaults = { method: 'post' };
+
+  // parse provided url if it's string or treat it as options object
+  if (typeof params === 'string') {
+    params = parseUrl(params); // eslint-disable-line no-param-reassign
+    /* eslint sort-keys: 0 */
+    options = populate({
+      port: params.port,
+      path: params.pathname,
+      host: params.hostname,
+      protocol: params.protocol
+    }, defaults);
+  } else { // use custom params
+    options = populate(params, defaults);
+    // if no port provided use default one
+    if (!options.port) {
+      options.port = options.protocol === 'https:' ? 443 : 80;
+    }
+  }
+
+  // put that good code in getHeaders to some use
+  options.headers = this.getHeaders(params.headers);
+
+  // https if specified, fallback to http in any other case
+  if (options.protocol === 'https:') {
+    request = https.request(options);
+  } else {
+    request = http.request(options);
+  }
+
+  // get content length and fire away
+  this.getLength(function (err, length) {
+    if (err && err !== 'Unknown stream') {
+      this._error(err);
+      return;
+    }
+
+    // add content length
+    if (length) {
+      request.setHeader('Content-Length', length);
+    }
+
+    this.pipe(request);
+    if (cb) {
+      var onResponse;
+
+      var callback = function (error, responce) {
+        request.removeListener('error', callback);
+        request.removeListener('response', onResponse);
+
+        return cb.call(this, error, responce);
+      };
+
+      onResponse = callback.bind(this, null);
+
+      request.on('error', callback);
+      request.on('response', onResponse);
+    }
+  }.bind(this));
+
+  return request;
+};
+
+FormData.prototype._error = function (err) {
+  if (!this.error) {
+    this.error = err;
+    this.pause();
+    this.emit('error', err);
+  }
+};
+
+FormData.prototype.toString = function () {
+  return '[object FormData]';
+};
+setToStringTag(FormData.prototype, 'FormData');
+
+// Public API
+module.exports = FormData;
+
+
+/***/ }),
+
+/***/ 1835:
+/***/ ((module) => {
+
+"use strict";
+
+
+// populates missing values
+module.exports = function (dst, src) {
+  Object.keys(src).forEach(function (prop) {
+    dst[prop] = dst[prop] || src[prop]; // eslint-disable-line no-param-reassign
+  });
+
+  return dst;
+};
+
+
+/***/ }),
+
+/***/ 9808:
+/***/ ((module) => {
+
+"use strict";
+
+
+/* eslint no-invalid-this: 1 */
+
+var ERROR_MESSAGE = 'Function.prototype.bind called on incompatible ';
+var toStr = Object.prototype.toString;
+var max = Math.max;
+var funcType = '[object Function]';
+
+var concatty = function concatty(a, b) {
+    var arr = [];
+
+    for (var i = 0; i < a.length; i += 1) {
+        arr[i] = a[i];
+    }
+    for (var j = 0; j < b.length; j += 1) {
+        arr[j + a.length] = b[j];
+    }
+
+    return arr;
+};
+
+var slicy = function slicy(arrLike, offset) {
+    var arr = [];
+    for (var i = offset || 0, j = 0; i < arrLike.length; i += 1, j += 1) {
+        arr[j] = arrLike[i];
+    }
+    return arr;
+};
+
+var joiny = function (arr, joiner) {
+    var str = '';
+    for (var i = 0; i < arr.length; i += 1) {
+        str += arr[i];
+        if (i + 1 < arr.length) {
+            str += joiner;
+        }
+    }
+    return str;
+};
+
+module.exports = function bind(that) {
+    var target = this;
+    if (typeof target !== 'function' || toStr.apply(target) !== funcType) {
+        throw new TypeError(ERROR_MESSAGE + target);
+    }
+    var args = slicy(arguments, 1);
+
+    var bound;
+    var binder = function () {
+        if (this instanceof bound) {
+            var result = target.apply(
+                this,
+                concatty(args, arguments)
+            );
+            if (Object(result) === result) {
+                return result;
+            }
+            return this;
+        }
+        return target.apply(
+            that,
+            concatty(args, arguments)
+        );
+
+    };
+
+    var boundLength = max(0, target.length - args.length);
+    var boundArgs = [];
+    for (var i = 0; i < boundLength; i++) {
+        boundArgs[i] = '$' + i;
+    }
+
+    bound = Function('binder', 'return function (' + joiny(boundArgs, ',') + '){ return binder.apply(this,arguments); }')(binder);
+
+    if (target.prototype) {
+        var Empty = function Empty() {};
+        Empty.prototype = target.prototype;
+        bound.prototype = new Empty();
+        Empty.prototype = null;
+    }
+
+    return bound;
+};
+
+
+/***/ }),
+
+/***/ 7564:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var implementation = __nccwpck_require__(9808);
+
+module.exports = Function.prototype.bind || implementation;
+
+
+/***/ }),
+
+/***/ 470:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var undefined;
+
+var $Object = __nccwpck_require__(5399);
+
+var $Error = __nccwpck_require__(1620);
+var $EvalError = __nccwpck_require__(3056);
+var $RangeError = __nccwpck_require__(4585);
+var $ReferenceError = __nccwpck_require__(6905);
+var $SyntaxError = __nccwpck_require__(105);
+var $TypeError = __nccwpck_require__(3314);
+var $URIError = __nccwpck_require__(2578);
+
+var abs = __nccwpck_require__(5641);
+var floor = __nccwpck_require__(6171);
+var max = __nccwpck_require__(7147);
+var min = __nccwpck_require__(1017);
+var pow = __nccwpck_require__(6947);
+var round = __nccwpck_require__(2621);
+var sign = __nccwpck_require__(156);
+
+var $Function = Function;
+
+// eslint-disable-next-line consistent-return
+var getEvalledConstructor = function (expressionSyntax) {
+	try {
+		return $Function('"use strict"; return (' + expressionSyntax + ').constructor;')();
+	} catch (e) {}
+};
+
+var $gOPD = __nccwpck_require__(3170);
+var $defineProperty = __nccwpck_require__(9094);
+
+var throwTypeError = function () {
+	throw new $TypeError();
+};
+var ThrowTypeError = $gOPD
+	? (function () {
+		try {
+			// eslint-disable-next-line no-unused-expressions, no-caller, no-restricted-properties
+			arguments.callee; // IE 8 does not throw here
+			return throwTypeError;
+		} catch (calleeThrows) {
+			try {
+				// IE 8 throws on Object.getOwnPropertyDescriptor(arguments, '')
+				return $gOPD(arguments, 'callee').get;
+			} catch (gOPDthrows) {
+				return throwTypeError;
+			}
+		}
+	}())
+	: throwTypeError;
+
+var hasSymbols = __nccwpck_require__(3336)();
+
+var getProto = __nccwpck_require__(1967);
+var $ObjectGPO = __nccwpck_require__(1311);
+var $ReflectGPO = __nccwpck_require__(8681);
+
+var $apply = __nccwpck_require__(3945);
+var $call = __nccwpck_require__(8093);
+
+var needsEval = {};
+
+var TypedArray = typeof Uint8Array === 'undefined' || !getProto ? undefined : getProto(Uint8Array);
+
+var INTRINSICS = {
+	__proto__: null,
+	'%AggregateError%': typeof AggregateError === 'undefined' ? undefined : AggregateError,
+	'%Array%': Array,
+	'%ArrayBuffer%': typeof ArrayBuffer === 'undefined' ? undefined : ArrayBuffer,
+	'%ArrayIteratorPrototype%': hasSymbols && getProto ? getProto([][Symbol.iterator]()) : undefined,
+	'%AsyncFromSyncIteratorPrototype%': undefined,
+	'%AsyncFunction%': needsEval,
+	'%AsyncGenerator%': needsEval,
+	'%AsyncGeneratorFunction%': needsEval,
+	'%AsyncIteratorPrototype%': needsEval,
+	'%Atomics%': typeof Atomics === 'undefined' ? undefined : Atomics,
+	'%BigInt%': typeof BigInt === 'undefined' ? undefined : BigInt,
+	'%BigInt64Array%': typeof BigInt64Array === 'undefined' ? undefined : BigInt64Array,
+	'%BigUint64Array%': typeof BigUint64Array === 'undefined' ? undefined : BigUint64Array,
+	'%Boolean%': Boolean,
+	'%DataView%': typeof DataView === 'undefined' ? undefined : DataView,
+	'%Date%': Date,
+	'%decodeURI%': decodeURI,
+	'%decodeURIComponent%': decodeURIComponent,
+	'%encodeURI%': encodeURI,
+	'%encodeURIComponent%': encodeURIComponent,
+	'%Error%': $Error,
+	'%eval%': eval, // eslint-disable-line no-eval
+	'%EvalError%': $EvalError,
+	'%Float16Array%': typeof Float16Array === 'undefined' ? undefined : Float16Array,
+	'%Float32Array%': typeof Float32Array === 'undefined' ? undefined : Float32Array,
+	'%Float64Array%': typeof Float64Array === 'undefined' ? undefined : Float64Array,
+	'%FinalizationRegistry%': typeof FinalizationRegistry === 'undefined' ? undefined : FinalizationRegistry,
+	'%Function%': $Function,
+	'%GeneratorFunction%': needsEval,
+	'%Int8Array%': typeof Int8Array === 'undefined' ? undefined : Int8Array,
+	'%Int16Array%': typeof Int16Array === 'undefined' ? undefined : Int16Array,
+	'%Int32Array%': typeof Int32Array === 'undefined' ? undefined : Int32Array,
+	'%isFinite%': isFinite,
+	'%isNaN%': isNaN,
+	'%IteratorPrototype%': hasSymbols && getProto ? getProto(getProto([][Symbol.iterator]())) : undefined,
+	'%JSON%': typeof JSON === 'object' ? JSON : undefined,
+	'%Map%': typeof Map === 'undefined' ? undefined : Map,
+	'%MapIteratorPrototype%': typeof Map === 'undefined' || !hasSymbols || !getProto ? undefined : getProto(new Map()[Symbol.iterator]()),
+	'%Math%': Math,
+	'%Number%': Number,
+	'%Object%': $Object,
+	'%Object.getOwnPropertyDescriptor%': $gOPD,
+	'%parseFloat%': parseFloat,
+	'%parseInt%': parseInt,
+	'%Promise%': typeof Promise === 'undefined' ? undefined : Promise,
+	'%Proxy%': typeof Proxy === 'undefined' ? undefined : Proxy,
+	'%RangeError%': $RangeError,
+	'%ReferenceError%': $ReferenceError,
+	'%Reflect%': typeof Reflect === 'undefined' ? undefined : Reflect,
+	'%RegExp%': RegExp,
+	'%Set%': typeof Set === 'undefined' ? undefined : Set,
+	'%SetIteratorPrototype%': typeof Set === 'undefined' || !hasSymbols || !getProto ? undefined : getProto(new Set()[Symbol.iterator]()),
+	'%SharedArrayBuffer%': typeof SharedArrayBuffer === 'undefined' ? undefined : SharedArrayBuffer,
+	'%String%': String,
+	'%StringIteratorPrototype%': hasSymbols && getProto ? getProto(''[Symbol.iterator]()) : undefined,
+	'%Symbol%': hasSymbols ? Symbol : undefined,
+	'%SyntaxError%': $SyntaxError,
+	'%ThrowTypeError%': ThrowTypeError,
+	'%TypedArray%': TypedArray,
+	'%TypeError%': $TypeError,
+	'%Uint8Array%': typeof Uint8Array === 'undefined' ? undefined : Uint8Array,
+	'%Uint8ClampedArray%': typeof Uint8ClampedArray === 'undefined' ? undefined : Uint8ClampedArray,
+	'%Uint16Array%': typeof Uint16Array === 'undefined' ? undefined : Uint16Array,
+	'%Uint32Array%': typeof Uint32Array === 'undefined' ? undefined : Uint32Array,
+	'%URIError%': $URIError,
+	'%WeakMap%': typeof WeakMap === 'undefined' ? undefined : WeakMap,
+	'%WeakRef%': typeof WeakRef === 'undefined' ? undefined : WeakRef,
+	'%WeakSet%': typeof WeakSet === 'undefined' ? undefined : WeakSet,
+
+	'%Function.prototype.call%': $call,
+	'%Function.prototype.apply%': $apply,
+	'%Object.defineProperty%': $defineProperty,
+	'%Object.getPrototypeOf%': $ObjectGPO,
+	'%Math.abs%': abs,
+	'%Math.floor%': floor,
+	'%Math.max%': max,
+	'%Math.min%': min,
+	'%Math.pow%': pow,
+	'%Math.round%': round,
+	'%Math.sign%': sign,
+	'%Reflect.getPrototypeOf%': $ReflectGPO
+};
+
+if (getProto) {
+	try {
+		null.error; // eslint-disable-line no-unused-expressions
+	} catch (e) {
+		// https://github.com/tc39/proposal-shadowrealm/pull/384#issuecomment-1364264229
+		var errorProto = getProto(getProto(e));
+		INTRINSICS['%Error.prototype%'] = errorProto;
+	}
+}
+
+var doEval = function doEval(name) {
+	var value;
+	if (name === '%AsyncFunction%') {
+		value = getEvalledConstructor('async function () {}');
+	} else if (name === '%GeneratorFunction%') {
+		value = getEvalledConstructor('function* () {}');
+	} else if (name === '%AsyncGeneratorFunction%') {
+		value = getEvalledConstructor('async function* () {}');
+	} else if (name === '%AsyncGenerator%') {
+		var fn = doEval('%AsyncGeneratorFunction%');
+		if (fn) {
+			value = fn.prototype;
+		}
+	} else if (name === '%AsyncIteratorPrototype%') {
+		var gen = doEval('%AsyncGenerator%');
+		if (gen && getProto) {
+			value = getProto(gen.prototype);
+		}
+	}
+
+	INTRINSICS[name] = value;
+
+	return value;
+};
+
+var LEGACY_ALIASES = {
+	__proto__: null,
+	'%ArrayBufferPrototype%': ['ArrayBuffer', 'prototype'],
+	'%ArrayPrototype%': ['Array', 'prototype'],
+	'%ArrayProto_entries%': ['Array', 'prototype', 'entries'],
+	'%ArrayProto_forEach%': ['Array', 'prototype', 'forEach'],
+	'%ArrayProto_keys%': ['Array', 'prototype', 'keys'],
+	'%ArrayProto_values%': ['Array', 'prototype', 'values'],
+	'%AsyncFunctionPrototype%': ['AsyncFunction', 'prototype'],
+	'%AsyncGenerator%': ['AsyncGeneratorFunction', 'prototype'],
+	'%AsyncGeneratorPrototype%': ['AsyncGeneratorFunction', 'prototype', 'prototype'],
+	'%BooleanPrototype%': ['Boolean', 'prototype'],
+	'%DataViewPrototype%': ['DataView', 'prototype'],
+	'%DatePrototype%': ['Date', 'prototype'],
+	'%ErrorPrototype%': ['Error', 'prototype'],
+	'%EvalErrorPrototype%': ['EvalError', 'prototype'],
+	'%Float32ArrayPrototype%': ['Float32Array', 'prototype'],
+	'%Float64ArrayPrototype%': ['Float64Array', 'prototype'],
+	'%FunctionPrototype%': ['Function', 'prototype'],
+	'%Generator%': ['GeneratorFunction', 'prototype'],
+	'%GeneratorPrototype%': ['GeneratorFunction', 'prototype', 'prototype'],
+	'%Int8ArrayPrototype%': ['Int8Array', 'prototype'],
+	'%Int16ArrayPrototype%': ['Int16Array', 'prototype'],
+	'%Int32ArrayPrototype%': ['Int32Array', 'prototype'],
+	'%JSONParse%': ['JSON', 'parse'],
+	'%JSONStringify%': ['JSON', 'stringify'],
+	'%MapPrototype%': ['Map', 'prototype'],
+	'%NumberPrototype%': ['Number', 'prototype'],
+	'%ObjectPrototype%': ['Object', 'prototype'],
+	'%ObjProto_toString%': ['Object', 'prototype', 'toString'],
+	'%ObjProto_valueOf%': ['Object', 'prototype', 'valueOf'],
+	'%PromisePrototype%': ['Promise', 'prototype'],
+	'%PromiseProto_then%': ['Promise', 'prototype', 'then'],
+	'%Promise_all%': ['Promise', 'all'],
+	'%Promise_reject%': ['Promise', 'reject'],
+	'%Promise_resolve%': ['Promise', 'resolve'],
+	'%RangeErrorPrototype%': ['RangeError', 'prototype'],
+	'%ReferenceErrorPrototype%': ['ReferenceError', 'prototype'],
+	'%RegExpPrototype%': ['RegExp', 'prototype'],
+	'%SetPrototype%': ['Set', 'prototype'],
+	'%SharedArrayBufferPrototype%': ['SharedArrayBuffer', 'prototype'],
+	'%StringPrototype%': ['String', 'prototype'],
+	'%SymbolPrototype%': ['Symbol', 'prototype'],
+	'%SyntaxErrorPrototype%': ['SyntaxError', 'prototype'],
+	'%TypedArrayPrototype%': ['TypedArray', 'prototype'],
+	'%TypeErrorPrototype%': ['TypeError', 'prototype'],
+	'%Uint8ArrayPrototype%': ['Uint8Array', 'prototype'],
+	'%Uint8ClampedArrayPrototype%': ['Uint8ClampedArray', 'prototype'],
+	'%Uint16ArrayPrototype%': ['Uint16Array', 'prototype'],
+	'%Uint32ArrayPrototype%': ['Uint32Array', 'prototype'],
+	'%URIErrorPrototype%': ['URIError', 'prototype'],
+	'%WeakMapPrototype%': ['WeakMap', 'prototype'],
+	'%WeakSetPrototype%': ['WeakSet', 'prototype']
+};
+
+var bind = __nccwpck_require__(7564);
+var hasOwn = __nccwpck_require__(4076);
+var $concat = bind.call($call, Array.prototype.concat);
+var $spliceApply = bind.call($apply, Array.prototype.splice);
+var $replace = bind.call($call, String.prototype.replace);
+var $strSlice = bind.call($call, String.prototype.slice);
+var $exec = bind.call($call, RegExp.prototype.exec);
+
+/* adapted from https://github.com/lodash/lodash/blob/4.17.15/dist/lodash.js#L6735-L6744 */
+var rePropName = /[^%.[\]]+|\[(?:(-?\d+(?:\.\d+)?)|(["'])((?:(?!\2)[^\\]|\\.)*?)\2)\]|(?=(?:\.|\[\])(?:\.|\[\]|%$))/g;
+var reEscapeChar = /\\(\\)?/g; /** Used to match backslashes in property paths. */
+var stringToPath = function stringToPath(string) {
+	var first = $strSlice(string, 0, 1);
+	var last = $strSlice(string, -1);
+	if (first === '%' && last !== '%') {
+		throw new $SyntaxError('invalid intrinsic syntax, expected closing `%`');
+	} else if (last === '%' && first !== '%') {
+		throw new $SyntaxError('invalid intrinsic syntax, expected opening `%`');
+	}
+	var result = [];
+	$replace(string, rePropName, function (match, number, quote, subString) {
+		result[result.length] = quote ? $replace(subString, reEscapeChar, '$1') : number || match;
+	});
+	return result;
+};
+/* end adaptation */
+
+var getBaseIntrinsic = function getBaseIntrinsic(name, allowMissing) {
+	var intrinsicName = name;
+	var alias;
+	if (hasOwn(LEGACY_ALIASES, intrinsicName)) {
+		alias = LEGACY_ALIASES[intrinsicName];
+		intrinsicName = '%' + alias[0] + '%';
+	}
+
+	if (hasOwn(INTRINSICS, intrinsicName)) {
+		var value = INTRINSICS[intrinsicName];
+		if (value === needsEval) {
+			value = doEval(intrinsicName);
+		}
+		if (typeof value === 'undefined' && !allowMissing) {
+			throw new $TypeError('intrinsic ' + name + ' exists, but is not available. Please file an issue!');
+		}
+
+		return {
+			alias: alias,
+			name: intrinsicName,
+			value: value
+		};
+	}
+
+	throw new $SyntaxError('intrinsic ' + name + ' does not exist!');
+};
+
+module.exports = function GetIntrinsic(name, allowMissing) {
+	if (typeof name !== 'string' || name.length === 0) {
+		throw new $TypeError('intrinsic name must be a non-empty string');
+	}
+	if (arguments.length > 1 && typeof allowMissing !== 'boolean') {
+		throw new $TypeError('"allowMissing" argument must be a boolean');
+	}
+
+	if ($exec(/^%?[^%]*%?$/, name) === null) {
+		throw new $SyntaxError('`%` may not be present anywhere but at the beginning and end of the intrinsic name');
+	}
+	var parts = stringToPath(name);
+	var intrinsicBaseName = parts.length > 0 ? parts[0] : '';
+
+	var intrinsic = getBaseIntrinsic('%' + intrinsicBaseName + '%', allowMissing);
+	var intrinsicRealName = intrinsic.name;
+	var value = intrinsic.value;
+	var skipFurtherCaching = false;
+
+	var alias = intrinsic.alias;
+	if (alias) {
+		intrinsicBaseName = alias[0];
+		$spliceApply(parts, $concat([0, 1], alias));
+	}
+
+	for (var i = 1, isOwn = true; i < parts.length; i += 1) {
+		var part = parts[i];
+		var first = $strSlice(part, 0, 1);
+		var last = $strSlice(part, -1);
+		if (
+			(
+				(first === '"' || first === "'" || first === '`')
+				|| (last === '"' || last === "'" || last === '`')
+			)
+			&& first !== last
+		) {
+			throw new $SyntaxError('property names with quotes must have matching quotes');
+		}
+		if (part === 'constructor' || !isOwn) {
+			skipFurtherCaching = true;
+		}
+
+		intrinsicBaseName += '.' + part;
+		intrinsicRealName = '%' + intrinsicBaseName + '%';
+
+		if (hasOwn(INTRINSICS, intrinsicRealName)) {
+			value = INTRINSICS[intrinsicRealName];
+		} else if (value != null) {
+			if (!(part in value)) {
+				if (!allowMissing) {
+					throw new $TypeError('base intrinsic for ' + name + ' exists, but the property is not available.');
+				}
+				return void undefined;
+			}
+			if ($gOPD && (i + 1) >= parts.length) {
+				var desc = $gOPD(value, part);
+				isOwn = !!desc;
+
+				// By convention, when a data property is converted to an accessor
+				// property to emulate a data property that does not suffer from
+				// the override mistake, that accessor's getter is marked with
+				// an `originalValue` property. Here, when we detect this, we
+				// uphold the illusion by pretending to see that original data
+				// property, i.e., returning the value rather than the getter
+				// itself.
+				if (isOwn && 'get' in desc && !('originalValue' in desc.get)) {
+					value = desc.get;
+				} else {
+					value = value[part];
+				}
+			} else {
+				isOwn = hasOwn(value, part);
+				value = value[part];
+			}
+
+			if (isOwn && !skipFurtherCaching) {
+				INTRINSICS[intrinsicRealName] = value;
+			}
+		}
+	}
+	return value;
+};
+
+
+/***/ }),
+
+/***/ 1311:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var $Object = __nccwpck_require__(5399);
+
+/** @type {import('./Object.getPrototypeOf')} */
+module.exports = $Object.getPrototypeOf || null;
+
+
+/***/ }),
+
+/***/ 8681:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./Reflect.getPrototypeOf')} */
+module.exports = (typeof Reflect !== 'undefined' && Reflect.getPrototypeOf) || null;
+
+
+/***/ }),
+
+/***/ 1967:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var reflectGetProto = __nccwpck_require__(8681);
+var originalGetProto = __nccwpck_require__(1311);
+
+var getDunderProto = __nccwpck_require__(6669);
+
+/** @type {import('.')} */
+module.exports = reflectGetProto
+	? function getProto(O) {
+		// @ts-expect-error TS can't narrow inside a closure, for some reason
+		return reflectGetProto(O);
+	}
+	: originalGetProto
+		? function getProto(O) {
+			if (!O || (typeof O !== 'object' && typeof O !== 'function')) {
+				throw new TypeError('getProto: not an object');
+			}
+			// @ts-expect-error TS can't narrow inside a closure, for some reason
+			return originalGetProto(O);
+		}
+		: getDunderProto
+			? function getProto(O) {
+				// @ts-expect-error TS can't narrow inside a closure, for some reason
+				return getDunderProto(O);
+			}
+			: null;
+
+
+/***/ }),
+
+/***/ 1174:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./gOPD')} */
+module.exports = Object.getOwnPropertyDescriptor;
+
+
+/***/ }),
+
+/***/ 3170:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+/** @type {import('.')} */
+var $gOPD = __nccwpck_require__(1174);
+
+if ($gOPD) {
+	try {
+		$gOPD([], 'length');
+	} catch (e) {
+		// IE 8 has a broken gOPD
+		$gOPD = null;
+	}
+}
+
+module.exports = $gOPD;
+
+
+/***/ }),
+
+/***/ 3336:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var origSymbol = typeof Symbol !== 'undefined' && Symbol;
+var hasSymbolSham = __nccwpck_require__(1114);
+
+/** @type {import('.')} */
+module.exports = function hasNativeSymbols() {
+	if (typeof origSymbol !== 'function') { return false; }
+	if (typeof Symbol !== 'function') { return false; }
+	if (typeof origSymbol('foo') !== 'symbol') { return false; }
+	if (typeof Symbol('bar') !== 'symbol') { return false; }
+
+	return hasSymbolSham();
+};
+
+
+/***/ }),
+
+/***/ 1114:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./shams')} */
+/* eslint complexity: [2, 18], max-statements: [2, 33] */
+module.exports = function hasSymbols() {
+	if (typeof Symbol !== 'function' || typeof Object.getOwnPropertySymbols !== 'function') { return false; }
+	if (typeof Symbol.iterator === 'symbol') { return true; }
+
+	/** @type {{ [k in symbol]?: unknown }} */
+	var obj = {};
+	var sym = Symbol('test');
+	var symObj = Object(sym);
+	if (typeof sym === 'string') { return false; }
+
+	if (Object.prototype.toString.call(sym) !== '[object Symbol]') { return false; }
+	if (Object.prototype.toString.call(symObj) !== '[object Symbol]') { return false; }
+
+	// temp disabled per https://github.com/ljharb/object.assign/issues/17
+	// if (sym instanceof Symbol) { return false; }
+	// temp disabled per https://github.com/WebReflection/get-own-property-symbols/issues/4
+	// if (!(symObj instanceof Symbol)) { return false; }
+
+	// if (typeof Symbol.prototype.toString !== 'function') { return false; }
+	// if (String(sym) !== Symbol.prototype.toString.call(sym)) { return false; }
+
+	var symVal = 42;
+	obj[sym] = symVal;
+	for (var _ in obj) { return false; } // eslint-disable-line no-restricted-syntax, no-unreachable-loop
+	if (typeof Object.keys === 'function' && Object.keys(obj).length !== 0) { return false; }
+
+	if (typeof Object.getOwnPropertyNames === 'function' && Object.getOwnPropertyNames(obj).length !== 0) { return false; }
+
+	var syms = Object.getOwnPropertySymbols(obj);
+	if (syms.length !== 1 || syms[0] !== sym) { return false; }
+
+	if (!Object.prototype.propertyIsEnumerable.call(obj, sym)) { return false; }
+
+	if (typeof Object.getOwnPropertyDescriptor === 'function') {
+		// eslint-disable-next-line no-extra-parens
+		var descriptor = /** @type {PropertyDescriptor} */ (Object.getOwnPropertyDescriptor(obj, sym));
+		if (descriptor.value !== symVal || descriptor.enumerable !== true) { return false; }
+	}
+
+	return true;
+};
+
+
+/***/ }),
+
+/***/ 5479:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var hasSymbols = __nccwpck_require__(1114);
+
+/** @type {import('.')} */
+module.exports = function hasToStringTagShams() {
+	return hasSymbols() && !!Symbol.toStringTag;
+};
+
+
+/***/ }),
+
+/***/ 4076:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var call = Function.prototype.call;
+var $hasOwn = Object.prototype.hasOwnProperty;
+var bind = __nccwpck_require__(7564);
+
+/** @type {import('.')} */
+module.exports = bind.call(call, $hasOwn);
+
+
+/***/ }),
+
+/***/ 5641:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./abs')} */
+module.exports = Math.abs;
+
+
+/***/ }),
+
+/***/ 6171:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./floor')} */
+module.exports = Math.floor;
+
+
+/***/ }),
+
+/***/ 7044:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./isNaN')} */
+module.exports = Number.isNaN || function isNaN(a) {
+	return a !== a;
+};
+
+
+/***/ }),
+
+/***/ 7147:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./max')} */
+module.exports = Math.max;
+
+
+/***/ }),
+
+/***/ 1017:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./min')} */
+module.exports = Math.min;
+
+
+/***/ }),
+
+/***/ 6947:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./pow')} */
+module.exports = Math.pow;
+
+
+/***/ }),
+
+/***/ 2621:
+/***/ ((module) => {
+
+"use strict";
+
+
+/** @type {import('./round')} */
+module.exports = Math.round;
+
+
+/***/ }),
+
+/***/ 156:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var $isNaN = __nccwpck_require__(7044);
+
+/** @type {import('./sign')} */
+module.exports = function sign(number) {
+	if ($isNaN(number) || number === 0) {
+		return number;
+	}
+	return number < 0 ? -1 : +1;
+};
+
+
+/***/ }),
+
+/***/ 9829:
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
+
+/*!
+ * mime-db
+ * Copyright(c) 2014 Jonathan Ong
+ * Copyright(c) 2015-2022 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+/**
+ * Module exports.
+ */
+
+module.exports = __nccwpck_require__(1813)
+
+
+/***/ }),
+
+/***/ 4096:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+/*!
+ * mime-types
+ * Copyright(c) 2014 Jonathan Ong
+ * Copyright(c) 2015 Douglas Christopher Wilson
+ * MIT Licensed
+ */
+
+
+
+/**
+ * Module dependencies.
+ * @private
+ */
+
+var db = __nccwpck_require__(9829)
+var extname = (__nccwpck_require__(6928).extname)
+
+/**
+ * Module variables.
+ * @private
+ */
+
+var EXTRACT_TYPE_REGEXP = /^\s*([^;\s]*)(?:;|\s|$)/
+var TEXT_TYPE_REGEXP = /^text\//i
+
+/**
+ * Module exports.
+ * @public
+ */
+
+exports.charset = charset
+exports.charsets = { lookup: charset }
+exports.contentType = contentType
+exports.extension = extension
+exports.extensions = Object.create(null)
+exports.lookup = lookup
+exports.types = Object.create(null)
+
+// Populate the extensions/types maps
+populateMaps(exports.extensions, exports.types)
+
+/**
+ * Get the default charset for a MIME type.
+ *
+ * @param {string} type
+ * @return {boolean|string}
+ */
+
+function charset (type) {
+  if (!type || typeof type !== 'string') {
+    return false
+  }
+
+  // TODO: use media-typer
+  var match = EXTRACT_TYPE_REGEXP.exec(type)
+  var mime = match && db[match[1].toLowerCase()]
+
+  if (mime && mime.charset) {
+    return mime.charset
+  }
+
+  // default text/* to utf-8
+  if (match && TEXT_TYPE_REGEXP.test(match[1])) {
+    return 'UTF-8'
+  }
+
+  return false
+}
+
+/**
+ * Create a full Content-Type header given a MIME type or extension.
+ *
+ * @param {string} str
+ * @return {boolean|string}
+ */
+
+function contentType (str) {
+  // TODO: should this even be in this module?
+  if (!str || typeof str !== 'string') {
+    return false
+  }
+
+  var mime = str.indexOf('/') === -1
+    ? exports.lookup(str)
+    : str
+
+  if (!mime) {
+    return false
+  }
+
+  // TODO: use content-type or other module
+  if (mime.indexOf('charset') === -1) {
+    var charset = exports.charset(mime)
+    if (charset) mime += '; charset=' + charset.toLowerCase()
+  }
+
+  return mime
+}
+
+/**
+ * Get the default extension for a MIME type.
+ *
+ * @param {string} type
+ * @return {boolean|string}
+ */
+
+function extension (type) {
+  if (!type || typeof type !== 'string') {
+    return false
+  }
+
+  // TODO: use media-typer
+  var match = EXTRACT_TYPE_REGEXP.exec(type)
+
+  // get extensions
+  var exts = match && exports.extensions[match[1].toLowerCase()]
+
+  if (!exts || !exts.length) {
+    return false
+  }
+
+  return exts[0]
+}
+
+/**
+ * Lookup the MIME type for a file path/extension.
+ *
+ * @param {string} path
+ * @return {boolean|string}
+ */
+
+function lookup (path) {
+  if (!path || typeof path !== 'string') {
+    return false
+  }
+
+  // get the extension ("ext" or ".ext" or full path)
+  var extension = extname('x.' + path)
+    .toLowerCase()
+    .substr(1)
+
+  if (!extension) {
+    return false
+  }
+
+  return exports.types[extension] || false
+}
+
+/**
+ * Populate the extensions and types maps.
+ * @private
+ */
+
+function populateMaps (extensions, types) {
+  // source preference (least -> most)
+  var preference = ['nginx', 'apache', undefined, 'iana']
+
+  Object.keys(db).forEach(function forEachMimeType (type) {
+    var mime = db[type]
+    var exts = mime.extensions
+
+    if (!exts || !exts.length) {
+      return
+    }
+
+    // mime -> extensions
+    extensions[type] = exts
+
+    // extension -> mime
+    for (var i = 0; i < exts.length; i++) {
+      var extension = exts[i]
+
+      if (types[extension]) {
+        var from = preference.indexOf(db[types[extension]].source)
+        var to = preference.indexOf(mime.source)
+
+        if (types[extension] !== 'application/octet-stream' &&
+          (from > to || (from === to && types[extension].substr(0, 12) === 'application/'))) {
+          // skip the remapping
+          continue
+        }
+      }
+
+      // set the extension -> mime
+      types[extension] = type
+    }
+  })
+}
+
+
+/***/ }),
+
+/***/ 7777:
+/***/ ((__unused_webpack_module, exports, __nccwpck_require__) => {
+
+"use strict";
+
+
+var parseUrl = (__nccwpck_require__(7016).parse);
+
+var DEFAULT_PORTS = {
+  ftp: 21,
+  gopher: 70,
+  http: 80,
+  https: 443,
+  ws: 80,
+  wss: 443,
+};
+
+var stringEndsWith = String.prototype.endsWith || function(s) {
+  return s.length <= this.length &&
+    this.indexOf(s, this.length - s.length) !== -1;
+};
+
+/**
+ * @param {string|object} url - The URL, or the result from url.parse.
+ * @return {string} The URL of the proxy that should handle the request to the
+ *  given URL. If no proxy is set, this will be an empty string.
+ */
+function getProxyForUrl(url) {
+  var parsedUrl = typeof url === 'string' ? parseUrl(url) : url || {};
+  var proto = parsedUrl.protocol;
+  var hostname = parsedUrl.host;
+  var port = parsedUrl.port;
+  if (typeof hostname !== 'string' || !hostname || typeof proto !== 'string') {
+    return '';  // Don't proxy URLs without a valid scheme or host.
+  }
+
+  proto = proto.split(':', 1)[0];
+  // Stripping ports in this way instead of using parsedUrl.hostname to make
+  // sure that the brackets around IPv6 addresses are kept.
+  hostname = hostname.replace(/:\d*$/, '');
+  port = parseInt(port) || DEFAULT_PORTS[proto] || 0;
+  if (!shouldProxy(hostname, port)) {
+    return '';  // Don't proxy URLs that match NO_PROXY.
+  }
+
+  var proxy =
+    getEnv('npm_config_' + proto + '_proxy') ||
+    getEnv(proto + '_proxy') ||
+    getEnv('npm_config_proxy') ||
+    getEnv('all_proxy');
+  if (proxy && proxy.indexOf('://') === -1) {
+    // Missing scheme in proxy, default to the requested URL's scheme.
+    proxy = proto + '://' + proxy;
+  }
+  return proxy;
+}
+
+/**
+ * Determines whether a given URL should be proxied.
+ *
+ * @param {string} hostname - The host name of the URL.
+ * @param {number} port - The effective port of the URL.
+ * @returns {boolean} Whether the given URL should be proxied.
+ * @private
+ */
+function shouldProxy(hostname, port) {
+  var NO_PROXY =
+    (getEnv('npm_config_no_proxy') || getEnv('no_proxy')).toLowerCase();
+  if (!NO_PROXY) {
+    return true;  // Always proxy if NO_PROXY is not set.
+  }
+  if (NO_PROXY === '*') {
+    return false;  // Never proxy if wildcard is set.
+  }
+
+  return NO_PROXY.split(/[,\s]/).every(function(proxy) {
+    if (!proxy) {
+      return true;  // Skip zero-length hosts.
+    }
+    var parsedProxy = proxy.match(/^(.+):(\d+)$/);
+    var parsedProxyHostname = parsedProxy ? parsedProxy[1] : proxy;
+    var parsedProxyPort = parsedProxy ? parseInt(parsedProxy[2]) : 0;
+    if (parsedProxyPort && parsedProxyPort !== port) {
+      return true;  // Skip if ports don't match.
+    }
+
+    if (!/^[.*]/.test(parsedProxyHostname)) {
+      // No wildcards, so stop proxying if there is an exact match.
+      return hostname !== parsedProxyHostname;
+    }
+
+    if (parsedProxyHostname.charAt(0) === '*') {
+      // Remove leading wildcard.
+      parsedProxyHostname = parsedProxyHostname.slice(1);
+    }
+    // Stop proxying if the hostname ends with the no_proxy host.
+    return !stringEndsWith.call(hostname, parsedProxyHostname);
+  });
+}
+
+/**
+ * Get the value for an environment variable.
+ *
+ * @param {string} key - The name of the environment variable.
+ * @return {string} The value of the environment variable.
+ * @private
+ */
+function getEnv(key) {
+  return process.env[key.toLowerCase()] || process.env[key.toUpperCase()] || '';
+}
+
+exports.getProxyForUrl = getProxyForUrl;
 
 
 /***/ }),
@@ -44351,7 +48217,7 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 const core = __importStar(__nccwpck_require__(7484));
-const quant_ts_client_1 = __nccwpck_require__(4046);
+const quant_client_1 = __nccwpck_require__(6491);
 function removeNullValues(obj) {
     if (obj === null || obj === undefined) {
         return undefined;
@@ -44389,11 +48255,11 @@ async function run() {
         const operation = core.getInput('operation', { required: false }) || 'create';
         let minCapacity = core.getInput('min_capacity', { required: false });
         let maxCapacity = core.getInput('max_capacity', { required: false });
-        const config = new quant_ts_client_1.Configuration({
+        const config = new quant_client_1.Configuration({
             basePath: baseUrl,
             accessToken: apiKey
         });
-        const client = new quant_ts_client_1.EnvironmentsApi(config);
+        const client = new quant_client_1.EnvironmentsApi(config);
         if (!minCapacity) {
             minCapacity = '1';
         }

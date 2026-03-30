@@ -6,7 +6,7 @@ import {
     EnvironmentsApi,
     Compose,
     Configuration
-} from 'quant-ts-client';
+} from '@quantcdn/quant-client';
 
 function removeNullValues(obj: any): any {
     if (obj === null || obj === undefined) {
