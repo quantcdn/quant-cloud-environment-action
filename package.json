@@ -10,10 +10,10 @@
   },
   "dependencies": {
     "@actions/core": "^1.10.0",
-    "@quantcdn/quant-client": "^4.12.0"
+    "@quantcdn/quant-client": "^4.15.4"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.12.2",
     "@vercel/ncc": "^0.38.3",
     "husky": "^9.1.7",
     "typescript": "^5.0.0"
