@@ -29,6 +29,12 @@ inputs:
   image_suffix:
     description: 'Suffix to append to container image names (e.g. "feature-xyz" transforms "cli-latest" to "cli-feature-xyz")'
     required: false
+  min_capacity:
+    description: 'Minimum number of tasks. Optional. When not set, the action does not send a value and the existing scaling configuration is kept (the platform default applies to new environments).'
+    required: false
+  max_capacity:
+    description: 'Maximum number of tasks. Optional. When not set, the action does not send a value and the existing scaling configuration is kept (the platform default applies to new environments).'
+    required: false
   operation:
     description: 'Operation to perform: create, update, or delete'
     required: false

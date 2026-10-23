@@ -39,6 +39,21 @@ interface ApiError {
 }
 
 /**
+ * Build the capacity fields to send. Only inputs the user set are included,
+ * so unset inputs never overwrite scaling configured elsewhere.
+ */
+function parseCapacity(min: string, max: string): { minCapacity?: number; maxCapacity?: number } {
+    const result: { minCapacity?: number; maxCapacity?: number } = {};
+    if (min.trim() !== '') {
+        result.minCapacity = parseInt(min, 10);
+    }
+    if (max.trim() !== '') {
+        result.maxCapacity = parseInt(max, 10);
+    }
+    return result;
+}
+
+/**
  * This action creates a new environment in Quant Cloud.
  * 
  * @returns The name of the created environment.
@@ -56,20 +71,15 @@ async function run(): Promise<void> {
         const composeSpec = core.getInput('compose_spec', { required: false });
         const imageSuffix = core.getInput('image_suffix', { required: false }).replace(/^-+|-+$/g, '');
         const operation = core.getInput('operation', { required: false }) || 'create';
-        let minCapacity = core.getInput('min_capacity', { required: false });
-        let maxCapacity = core.getInput('max_capacity', { required: false });
+        const capacity = parseCapacity(
+            core.getInput('min_capacity', { required: false }),
+            core.getInput('max_capacity', { required: false })
+        );
         const config = new Configuration({
             basePath: baseUrl,
             accessToken: apiKey
         });
         const client = new EnvironmentsApi(config);
-
-        if (!minCapacity) {
-            minCapacity = '1';
-        }
-        if (!maxCapacity) {
-            maxCapacity = '1';
-        }
 
         let state = 'update';
         let environment: Environment;
@@ -121,8 +131,7 @@ async function run(): Promise<void> {
         if (state === 'create') {
             const createEnvironmentRequest: any = {
                 envName: environmentName,
-                minCapacity: parseInt(minCapacity),
-                maxCapacity: parseInt(maxCapacity)
+                ...capacity
             }
 
             // Only add composeDefinition if composeSpec was provided
@@ -167,8 +176,7 @@ async function run(): Promise<void> {
 
             const updateEnvironmentRequest: any = {
                 composeDefinition,
-                minCapacity: parseInt(minCapacity),
-                maxCapacity: parseInt(maxCapacity),
+                ...capacity
             }
 
             // Add image suffix if provided - API handles the transformation

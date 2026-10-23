@@ -134,6 +134,10 @@ This GitHub Action creates or updates an environment in Quant Cloud.
   * Example: `"feature-xyz"` transforms `"cli-latest"` → `"cli-feature-xyz"`
   * Works with both cloning (`from_environment`) and explicit compose specifications
   * Perfect for feature branch deployments with custom image tags
+* `min_capacity` / `max_capacity`: Minimum and maximum number of tasks
+  * **Optional** - no default. They are sent to the API only when you set them (on create and on update)
+  * When not set, the action does not touch scaling: existing environments keep their current scaling (for example values set in the dashboard) and new environments get the platform default
+  * Previously these were undeclared and defaulted to `1`, which reset scaling to 1/1 on every deploy
 * `operation`: Operation to perform
   * **Optional** - defaults to `create`
   * Valid values: `create`, `update`, `delete`
@@ -141,6 +145,11 @@ This GitHub Action creates or updates an environment in Quant Cloud.
   * `update`: Updates existing environment (fails if doesn't exist)
   * `delete`: Deletes environment (succeeds silently if doesn't exist)
 * `base_url`: Quant Cloud API URL (optional, defaults to https://dashboard.quantcdn.io/api/v3)
+
+## Unreleased
+
+* Fix: `min_capacity` and `max_capacity` are now declared inputs and are no longer defaulted to `1`. A deploy without them no longer resets scaling.
+* dist rebuilt from the locked dependencies (axios 1.14.0).
 
 ## Outputs
 
