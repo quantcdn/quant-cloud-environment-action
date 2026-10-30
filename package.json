@@ -9,7 +9,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "@actions/core": "^1.10.0",
+    "@actions/core": "^3.0.0",
     "@quantcdn/quant-client": "^4.12.0"
   },
   "devDependencies": {
@@ -26,6 +26,20 @@
     "testEnvironment": "node",
     "testMatch": [
       "**/src/**/*.test.ts"
-    ]
+    ],
+    "moduleNameMapper": {
+      "^@actions/core$": "<rootDir>/node_modules/@actions/core/lib/core.js"
+    },
+    "transform": {
+      "^.+\\.tsx?$": [
+        "ts-jest",
+        {
+          "tsconfig": {
+            "module": "CommonJS",
+            "moduleResolution": "Node"
+          }
+        }
+      ]
+    }
   }
 }

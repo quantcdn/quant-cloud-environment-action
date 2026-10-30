@@ -44,4 +44,5 @@ outputs:
     description: 'The name of the created or updated environment'
 runs:
   using: 'node24'
+  pre: 'runtime-check.cjs'
   main: 'dist/index.js' 
