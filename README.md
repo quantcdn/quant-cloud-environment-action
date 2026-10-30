@@ -120,7 +120,7 @@ This GitHub Action creates or updates an environment in Quant Cloud.
 * `environment_name`: Name for the environment (required)
 * `compose_spec`: Compose specification for the environment
   * **Required** when creating a fresh environment (no `from_environment`)
-  * **Required** when updating an existing environment 
+  * **Required** when updating an existing environment
   * **Optional** when cloning from an existing environment (used for container overrides)
   * Must be a valid JSON string
   * Each container must have a name and imageReference
@@ -153,4 +153,12 @@ This GitHub Action creates or updates an environment in Quant Cloud.
 
 ## Outputs
 
-* `environment_name`: The name of the created or updated environment 
+* `environment_name`: The name of the created or updated environment
+## Runner security requirement
+
+This action uses the runner's embedded Node 24, which must be 24.22.1 or later
+for CVE-2026-111497. Update self-hosted runner containers/binaries to apply the
+fix. A `setup-node` workflow step changes the job shell runtime, not the Node
+binary GitHub uses to execute actions. A pre-run check rejects vulnerable
+runner versions before action API calls. Use the current maintained action tag
+or its immutable release SHA; historical pinned releases do not update themselves.
